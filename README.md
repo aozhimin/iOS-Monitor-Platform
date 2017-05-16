@@ -6,7 +6,7 @@
 
 获取当前应用的 CPU 占有率，注意方法最后要调用 vm_deallocate，防止出现内存泄漏，该方法采集的 CPU 数据和腾讯的 [GT](https://github.com/Tencent/GT)、Instruments 数据接近。
 
-``` objective-c
+``` c
 #import <mach/mach.h>
 #import <assert.h>
 
@@ -115,3 +115,65 @@ float cpu_usage()
 }
 
 ```
+
+## Memory
+
+获取当前 App memory 使用情况
+
+``` objective-c
+- (NSUInteger)getResidentMemory
+{
+    struct task_basic_info t_info;
+	mach_msg_type_number_t t_info_count = TASK_BASIC_INFO_COUNT;
+	
+	int r = task_info(mach_task_self(), TASK_BASIC_INFO, (task_info_t)&t_info, &t_info_count);
+	if (r == KERN_SUCCESS)
+	{
+		return t_info.resident_size;
+	}
+	else
+	{
+		return -1;
+	}
+}
+
+```
+
+获取当前设备的 Memory 使用情况
+
+``` c
+int64_t getUsedMemory()
+{
+    size_t length = 0;
+    int mib[6] = {0};
+    
+    int pagesize = 0;
+    mib[0] = CTL_HW;
+    mib[1] = HW_PAGESIZE;
+    length = sizeof(pagesize);
+    if (sysctl(mib, 2, &pagesize, &length, NULL, 0) < 0)
+    {
+        return 0;
+    }
+    
+    mach_msg_type_number_t count = HOST_VM_INFO_COUNT;
+    
+    vm_statistics_data_t vmstat;
+    
+    if (host_statistics(mach_host_self(), HOST_VM_INFO, (host_info_t)&vmstat, &count) != KERN_SUCCESS)
+    {
+		return 0;
+    }
+    
+    int wireMem = vmstat.wire_count * pagesize;
+	int activeMem = vmstat.active_count * pagesize;
+    return wireMem + activeMem;
+}
+
+```
+
+
+## 参考资料
+
+* [iOS-System-Services](https://github.com/Shmoopi/iOS-System-Services)
+* [GT](https://github.com/Tencent/GT)
