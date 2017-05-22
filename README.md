@@ -1,6 +1,6 @@
 # iOS-Monitor-Platform
 
-这篇文章是我在开发 iOS 性能检测平台 SDK 搜集资料的总结和整理。
+这篇文章是我在开发 iOS 性能检测平台 SDK 搜集资料的总结和整理。主要会探讨下在 iOS 平台下如何采集性能指标，如 CPU 占用率、内存使用情况、FPS、冷启动、热启动时间等，剖析每一项指标的具体实现方式。
 
 ## CPU
 
@@ -248,8 +248,55 @@ static inline NSTimeInterval MachTimeToSeconds(uint64_t machTime) {
 
 > 因为类的`+ load`方法在 main 函数执行之前调用，所以我们可以在`+ load`方法记录开始时间，同时监听`UIApplicationDidFinishLaunchingNotification`通知，收到通知时将时间相减作为应用启动时间，这样做有一个好处，不需要侵入到业务方的`main`函数去记录开始时间点。
 
+## FPS
 
+首先来看 wikipedia 上是怎么定义 FPS(Frames Per Second)。
+> Frame rate (expressed in frames per second or FPS) is the frequency (rate) at which consecutive images called frames are displayed in an animated display. The term applies equally to film and video cameras, computer graphics, and motion capture systems. Frame rate may also be called the frame frequency, and be expressed in hertz.
 
+通过定义可以看出 FPS 是测量用于保存、显示动态视频的信息数量，每秒钟帧数愈多，所显示的动作就会愈流畅，一般应用只要保持 FPS 在 50-60，应用会给流畅的感觉。
+
+接下来我们看下网络上流传的最多的关于测量 FPS 的方法：
+
+``` objective-c
+
+@implementation YYFPSLabel {
+    CADisplayLink *_link;
+    NSUInteger _count;
+    NSTimeInterval _lastTime;    
+}
+
+- (id)init {
+    self = [super init];
+    if( self ){        
+    _link = [CADisplayLink displayLinkWithTarget:[YYWeakProxy proxyWithTarget:self] selector:@selector(tick:)];
+    [_link addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
+        
+    }
+    return self;
+}
+
+- (void)dealloc {
+    [_link invalidate];
+}
+
+- (void)tick:(CADisplayLink *)link {
+    if (_lastTime == 0) {
+        _lastTime = link.timestamp;
+        return;
+    }
+    
+    _count++;
+    NSTimeInterval delta = link.timestamp - _lastTime;
+    if (delta < 1) return;
+    _lastTime = link.timestamp;
+    float fps = _count / delta;
+    _count = 0;    
+}
+
+```
+> 上面是 YYText 中 Demo 的 YYFPSLabel，主要是基于`CADisplayLink`以屏幕刷新频率同步绘图的特性，尝试根据这点去实现一个可以观察屏幕当前帧数的指示器。`YYWeakProxy`的使用是为了避免循环引用。
+
+值得注意的是基于`CADisplayLink`实现的 FPS 在生产场景中只有指导意义，不能代表真实的 FPS，因为基于`CADisplayLink`实现的 FPS 无法完全检测出当前 Core Animation 的性能情况，因为它只能检测出当前 RunLoop 的帧率。
 
 
 ## 参考资料
@@ -260,4 +307,6 @@ static inline NSTimeInterval MachTimeToSeconds(uint64_t machTime) {
 * [Apple 文档：Strategies for Handling App State Transitions](https://developer.apple.com/library/content/documentation/iPhone/Conceptual/iPhoneOSProgrammingGuide/StrategiesforHandlingAppStateTransitions/StrategiesforHandlingAppStateTransitions.html)
 * [iOS关于时间的处理](http://mrpeak.cn/blog/ios-time/)
 * [StartupMeasurer](https://github.com/fealebenpae/StartupMeasurer)
+* [Frame rate](https://en.wikipedia.org/wiki/Frame_rate)
+* [YYText](https://github.com/ibireme/YYText)
 
