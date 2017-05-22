@@ -172,8 +172,92 @@ int64_t getUsedMemory()
 
 ```
 
+## Startup Time
+
+毫无疑问移动应用的启动时间是影响用户体验的一个重要方面，那么我们究竟该如何通过启动时间来衡量一个应用性能的好坏呢？启动时间可以从冷启动和热启动两个角度去测量
+
+* 冷启动：指的是应用尚未运行，必须加载并构建整个应用，完成初始化的工作，冷启动往往比热启动耗时长，而且每个应用的冷启动耗时差别也很大，所以冷启动也存在了很大的优化空间，冷启动时间从`applicationDidFinishLaunching:withOptions:`方法开始计算，很多应用会在该方法对其使用的第三方库初始化。
+* 热启动：应用已经在后台运行(常见的场景是用户按了 Home 按钮)，由于某个事件将应用唤醒到前台，应用会在`applicationWillEnterForeground:`方法接收应用进入前台的事件
+
+先来研究下冷启动，因为在它里面存在很多资源密集型的操作，下面先看看苹果官方文档给的应用的启动时序图
+
+<img src="Images/app_launch_fg.png" style="display: block; margin: 0 auto;" width="500">
+
+t(App 总启动时间) = t1(main() 之前的加载时间) + t2(main() 之后的加载时间)。
+
+t1 = 系统的 dylib (动态链接库)和 App 可执行文件的加载时间
+
+t2 = main 函数执行之后到 AppDelegate 类中的`applicationDidFinishLaunching:withOptions:`方法执行结束前这段时间
+
+先来看看如何通过打点的方式统计 main 函数之后的时间，下面代码是有些文章给出的一种实现
+
+``` objective-c
+CFAbsoluteTime StartTime;
+
+int main(int argc, char * argv[]) {
+    @autoreleasepool {
+        StartTime = CFAbsoluteTimeGetCurrent();
+        return UIApplicationMain(argc, argv, nil, NSStringFromClass([AppDelegate class]));
+    }
+}
+
+extern CFAbsoluteTime StartTime;
+ ...
+ 
+// 在 applicationDidFinishLaunching:withOptions: 方法的最后统计
+dispatch_async(dispatch_get_main_queue(), ^{
+    NSLog(@"Launched in %f sec", CFAbsoluteTimeGetCurrent() - StartTime);
+});
+
+
+```
+> 上述代码使用`CFAbsoluteTimeGetCurrent()`方法来计算时间，`CFAbsoluteTimeGetCurrent()`的概念和`NSDate`非常相似，只不过参考点是：以GMT为标准的，2001年一月一日00：00：00这一刻的时间绝对值。`CFAbsoluteTimeGetCurrent()`也会跟着当前设备的系统时间一起变化，也可能会被用户修改。他的精确度可能是微秒（μs）
+
+其实还可以通过`mach_absolute_time()`来计算时间，这个一般很少用，他表示 CPU 的时钟周期数（ticks），精确度可以达到纳秒（ns），`mach_absolute_time()`不受系统时间影响，只受设备重启和休眠行为影响。示例代码如下
+
+``` objective-c
+static uint64_t loadTime;
+static uint64_t applicationRespondedTime = -1;
+static mach_timebase_info_data_t timebaseInfo;
+
+static inline NSTimeInterval MachTimeToSeconds(uint64_t machTime) {
+    return ((machTime / 1e9) * timebaseInfo.numer) / timebaseInfo.denom;
+}
+
+@implementation XXStartupMeasurer
+
++ (void)load {
+    loadTime = mach_absolute_time();
+    mach_timebase_info(&timebaseInfo);
+    
+    @autoreleasepool {
+        __block id<NSObject> obs;
+        obs = [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidFinishLaunchingNotification
+                                                                object:nil queue:nil
+                                                            usingBlock:^(NSNotification *note) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                applicationRespondedTime = mach_absolute_time();
+                NSLog(@"StartupMeasurer: it took %f seconds until the app could respond to user interaction.", MachTimeToSeconds(applicationRespondedTime - loadTime));
+            });
+            [[NSNotificationCenter defaultCenter] removeObserver:obs];
+        }];
+    }
+}
+
+```
+
+> 因为类的`+ load`方法在 main 函数执行之前调用，所以我们可以在`+ load`方法记录开始时间，同时监听`UIApplicationDidFinishLaunchingNotification`通知，收到通知时将时间相减作为应用启动时间，这样做有一个好处，不需要侵入到业务方的`main`函数去记录开始时间点。
+
+
+
+
 
 ## 参考资料
 
 * [iOS-System-Services](https://github.com/Shmoopi/iOS-System-Services)
 * [GT](https://github.com/Tencent/GT)
+* [Optimizing Facebook for iOS start time](https://code.facebook.com/posts/1675399786008080/optimizing-facebook-for-ios-start-time/)
+* [Apple 文档：Strategies for Handling App State Transitions](https://developer.apple.com/library/content/documentation/iPhone/Conceptual/iPhoneOSProgrammingGuide/StrategiesforHandlingAppStateTransitions/StrategiesforHandlingAppStateTransitions.html)
+* [iOS关于时间的处理](http://mrpeak.cn/blog/ios-time/)
+* [StartupMeasurer](https://github.com/fealebenpae/StartupMeasurer)
+
