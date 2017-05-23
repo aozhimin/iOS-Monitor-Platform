@@ -326,6 +326,12 @@ FPS 的刷新频率非常快，并且容易发生抖动，因此直接通过比�
 <img src="Images/hertz_freezing.png" style="display: block; margin: 0 auto;" width="600">
 
 
+## Author
+
+Twitter: [@aozhimin](https://twitter.com/aozhimin0811)
+
+Email: aozhimin0811@gmail.com
+
 ## 参考资料
 
 * [iOS-System-Services](https://github.com/Shmoopi/iOS-System-Services)
