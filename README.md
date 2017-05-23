@@ -255,7 +255,7 @@ static inline NSTimeInterval MachTimeToSeconds(uint64_t machTime) {
 
 通过定义可以看出 FPS 是测量用于保存、显示动态视频的信息数量，每秒钟帧数愈多，所显示的动作就会愈流畅，一般应用只要保持 FPS 在 50-60，应用会给流畅的感觉。
 
-接下来我们看下网络上流传的最多的关于测量 FPS 的方法：
+接下来我们看下网络上流传的最多的关于测量 FPS 的方法，GitHub 上有关计算 FPS 的仓库基本都是通过以下方式实现的：
 
 ``` objective-c
 
@@ -296,8 +296,20 @@ static inline NSTimeInterval MachTimeToSeconds(uint64_t machTime) {
 ```
 > 上面是 YYText 中 Demo 的 YYFPSLabel，主要是基于`CADisplayLink`以屏幕刷新频率同步绘图的特性，尝试根据这点去实现一个可以观察屏幕当前帧数的指示器。`YYWeakProxy`的使用是为了避免循环引用。
 
-值得注意的是基于`CADisplayLink`实现的 FPS 在生产场景中只有指导意义，不能代表真实的 FPS，因为基于`CADisplayLink`实现的 FPS 无法完全检测出当前 Core Animation 的性能情况，因为它只能检测出当前 RunLoop 的帧率。
+值得注意的是基于`CADisplayLink`实现的 FPS 在生产场景中只有指导意义，不能代表真实的 FPS，因为基于`CADisplayLink`实现的 FPS 无法完全检测出当前 Core Animation 的性能情况，它只能检测出当前 RunLoop 的帧率。
 
+## Freezing/Lag
+
+### 为什么会出现卡顿
+从一个像素到最后真正显示在屏幕上，iPhone 究竟在这个过程中做了些什么？要了解背后的运作流程，首先需要了解屏幕显示的原理。iOS 上完成图形的显示实际上 CPU、GPU 和显示器协同工作的结果，具体来说，CPU 负责计算显示内容，包括视图的创建、布局计算、图片解码、文本绘制等，CPU 完成计算后会将计算内容提交给 GPU，GPU 进行变换、合成、渲染后将渲染结果提交到帧缓冲区，当下一次垂直同步信号（简写也是 V-Sync）到来时，最后显示到屏幕上。下面是显示流程的示意图：
+
+<img src="Images/ios_screen_display.png" style="display: block; margin: 0 auto;" width="600">
+
+上文中提到 V-Sync 是什么，以及为什么要在 iPhone 的显示流程引入它呢？在 iPhone 中使用的是双缓冲机制，即上图中的 FrameBuffer 有两个缓冲区，双缓冲区的引入是为了提升显示效率，但是与此同时，他引入了一个新的问题，当视频控制器还未读取完成时，比如屏幕内容刚显示一半时，GPU 将新的一帧内容提交到帧缓冲区并把两个缓冲区进行交换后，视频控制器就会把新的一帧数据的下半段显示到屏幕上，造成画面撕裂现象，V-Sync 就是为了解决画面撕裂问题，开启 V-Sync 后，GPU 会在显示器发出 V-Sync 信号后，去进行新帧的渲染和缓冲区的更新。
+
+搞清楚了 iPhone 的屏幕显示原理后，下面来看看在 iPhone 上为什么会出现卡顿现象，上文已经提及在图像真正在屏幕显示之前，CPU 和 GPU 需要完成自身的任务，而如果他们完成的时间错过了下一次 V-Sync 的到来（通常是1000/60=16.67ms），这样就会出现显示屏还是之前帧的内容，这就是界面卡顿的原因。不难发现，无论是 CPU 还是 GPU 引起错过 V-Sync 信号，都会造成界面卡顿。
+
+<img src="Images/ios_frame_drop.png" style="display: block; margin: 0 auto;" width="600">
 
 ## 参考资料
 
@@ -309,4 +321,6 @@ static inline NSTimeInterval MachTimeToSeconds(uint64_t machTime) {
 * [StartupMeasurer](https://github.com/fealebenpae/StartupMeasurer)
 * [Frame rate](https://en.wikipedia.org/wiki/Frame_rate)
 * [YYText](https://github.com/ibireme/YYText)
+* [移动端性能监控方案Hertz](http://tech.meituan.com/hertz.html)
+* [iOS 保持界面流畅的技巧](http://blog.ibireme.com/2015/11/12/smooth_user_interfaces_for_ios/)
 
