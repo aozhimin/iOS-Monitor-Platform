@@ -1,10 +1,10 @@
 # iOS-Monitor-Platform
 
-这篇文章是我在开发 iOS 性能检测平台 SDK 搜集资料的总结和整理。主要会探讨下在 iOS 平台下如何采集性能指标，如 CPU 占用率、内存使用情况、FPS、冷启动、热启动时间等，剖析每一项指标的具体实现方式。
+这篇文章是我在开发 iOS 性能检测平台 SDK 搜集资料的总结和整理。主要会探讨下在 iOS 平台下如何采集性能指标，如 **CPU 占用率、内存使用情况、FPS、冷启动、热启动时间**等，剖析每一项指标的具体实现方式。
 
 ## CPU
 
-获取当前应用的 CPU 占有率，注意方法最后要调用 vm_deallocate，防止出现内存泄漏，该方法采集的 CPU 数据和腾讯的 [GT](https://github.com/Tencent/GT)、Instruments 数据接近。
+获取当前应用的 **CPU** 占有率，注意方法最后要调用 `vm_deallocate`，防止出现内存泄漏，该方法采集的 **CPU** 数据和腾讯的 [GT](https://github.com/Tencent/GT)、**Instruments** 数据接近。
 
 ``` c
 #import <mach/mach.h>
@@ -73,7 +73,7 @@ float cpu_usage()
 }
 
 ```
-[GT](https://github.com/Tencent/GT) 中获得 App 的 CPU 占有率的方法
+[GT](https://github.com/Tencent/GT) 中获得 App 的 **CPU** 占有率的方法
 
 ``` objective-c
 - (float)getCpuUsage
@@ -118,7 +118,7 @@ float cpu_usage()
 
 ## Memory
 
-获取当前 App memory 使用情况
+获取当前 **App Memory** 使用情况
 
 ``` objective-c
 - (NSUInteger)getResidentMemory
@@ -139,7 +139,7 @@ float cpu_usage()
 
 ```
 
-获取当前设备的 Memory 使用情况
+获取当前设备的 **Memory** 使用情况
 
 ``` c
 int64_t getUsedMemory()
@@ -183,13 +183,13 @@ int64_t getUsedMemory()
 
 <img src="Images/app_launch_fg.png" style="display: block; margin: 0 auto;" width="500">
 
-t(App 总启动时间) = t1(main() 之前的加载时间) + t2(main() 之后的加载时间)。
+t(App 总启动时间) = t1(`main()`之前的加载时间) + t2(`main()`之后的加载时间)。
 
 t1 = 系统的 dylib (动态链接库)和 App 可执行文件的加载时间
 
-t2 = main 函数执行之后到 AppDelegate 类中的`applicationDidFinishLaunching:withOptions:`方法执行结束前这段时间
+t2 = `main`函数执行之后到 `AppDelegate` 类中的`applicationDidFinishLaunching:withOptions:`方法执行结束前这段时间
 
-先来看看如何通过打点的方式统计 main 函数之后的时间，下面代码是有些文章给出的一种实现
+先来看看如何通过打点的方式统计`main`函数之后的时间，下面代码是有些文章给出的一种实现
 
 ``` objective-c
 CFAbsoluteTime StartTime;
@@ -246,11 +246,11 @@ static inline NSTimeInterval MachTimeToSeconds(uint64_t machTime) {
 
 ```
 
-> 因为类的`+ load`方法在 main 函数执行之前调用，所以我们可以在`+ load`方法记录开始时间，同时监听`UIApplicationDidFinishLaunchingNotification`通知，收到通知时将时间相减作为应用启动时间，这样做有一个好处，不需要侵入到业务方的`main`函数去记录开始时间点。
+> 因为类的`+ load`方法在`main`函数执行之前调用，所以我们可以在`+ load`方法记录开始时间，同时监听`UIApplicationDidFinishLaunchingNotification`通知，收到通知时将时间相减作为应用启动时间，这样做有一个好处，不需要侵入到业务方的`main`函数去记录开始时间点。
 
 ## FPS
 
-首先来看 wikipedia 上是怎么定义 FPS(Frames Per Second)。
+首先来看 **wikipedia** 上是怎么定义 FPS(Frames Per Second)。
 > Frame rate (expressed in frames per second or FPS) is the frequency (rate) at which consecutive images called frames are displayed in an animated display. The term applies equally to film and video cameras, computer graphics, and motion capture systems. Frame rate may also be called the frame frequency, and be expressed in hertz.
 
 通过定义可以看出 FPS 是测量用于保存、显示动态视频的信息数量，每秒钟帧数愈多，所显示的动作就会愈流畅，一般应用只要保持 FPS 在 50-60，应用会给流畅的感觉。
@@ -294,13 +294,14 @@ static inline NSTimeInterval MachTimeToSeconds(uint64_t machTime) {
 }
 
 ```
-> 上面是 YYText 中 Demo 的 YYFPSLabel，主要是基于`CADisplayLink`以屏幕刷新频率同步绘图的特性，尝试根据这点去实现一个可以观察屏幕当前帧数的指示器。`YYWeakProxy`的使用是为了避免循环引用。
+> 上面是 `YYText` 中 Demo 的 `YYFPSLabel`，主要是基于`CADisplayLink`以屏幕刷新频率同步绘图的特性，尝试根据这点去实现一个可以观察屏幕当前帧数的指示器。`YYWeakProxy`的使用是为了避免循环引用。
 
-值得注意的是基于`CADisplayLink`实现的 FPS 在生产场景中只有指导意义，不能代表真实的 FPS，因为基于`CADisplayLink`实现的 FPS 无法完全检测出当前 Core Animation 的性能情况，它只能检测出当前 RunLoop 的帧率。
+值得注意的是基于`CADisplayLink`实现的 FPS 在生产场景中只有指导意义，不能代表真实的 FPS，因为基于`CADisplayLink`实现的 FPS 无法完全检测出当前 **Core Animation** 的性能情况，它只能检测出当前 **RunLoop** 的帧率。
 
 ## Freezing/Lag
 
 ### 为什么会出现卡顿
+
 从一个像素到最后真正显示在屏幕上，iPhone 究竟在这个过程中做了些什么？要了解背后的运作流程，首先需要了解屏幕显示的原理。iOS 上完成图形的显示实际上 CPU、GPU 和显示器协同工作的结果，具体来说，CPU 负责计算显示内容，包括视图的创建、布局计算、图片解码、文本绘制等，CPU 完成计算后会将计算内容提交给 GPU，GPU 进行变换、合成、渲染后将渲染结果提交到帧缓冲区，当下一次垂直同步信号（简写也是 V-Sync）到来时，最后显示到屏幕上。下面是显示流程的示意图：
 
 <img src="Images/ios_screen_display.png" style="display: block; margin: 0 auto;" width="600">
@@ -310,6 +311,20 @@ static inline NSTimeInterval MachTimeToSeconds(uint64_t machTime) {
 搞清楚了 iPhone 的屏幕显示原理后，下面来看看在 iPhone 上为什么会出现卡顿现象，上文已经提及在图像真正在屏幕显示之前，CPU 和 GPU 需要完成自身的任务，而如果他们完成的时间错过了下一次 V-Sync 的到来（通常是1000/60=16.67ms），这样就会出现显示屏还是之前帧的内容，这就是界面卡顿的原因。不难发现，无论是 CPU 还是 GPU 引起错过 V-Sync 信号，都会造成界面卡顿。
 
 <img src="Images/ios_frame_drop.png" style="display: block; margin: 0 auto;" width="600">
+
+### 如何监控卡顿
+
+那怎么监控应用的卡顿情况？通常有以下两种方案
+
+* FPS 监控：这是最容易想到的一种方案，如果帧率越高意味着界面越流畅，上文也给出了计算 FPS 的实现方式，通过一段连续的 FPS 计算丢帧率来衡量当前页面绘制的质量。
+* 主线程卡顿监控：这是业内常用的一种检测卡顿的方法，通过开辟一个子线程来监控主线程的 **RunLoop**，当两个状态区域之间的耗时大于阈值时，就记为发生一次卡顿。美团的移动端性能监控方案 **Hertz** 采用的就是这种方式
+
+FPS 的刷新频率非常快，并且容易发生抖动，因此直接通过比较通过 FPS 来侦测卡顿是比较困难的，主线程卡顿监控也会发生抖动，所以微信读书团队给出一种综合方案，结合主线程监控、FPS 监控，以及 CPU 使用率等指标，作为判断卡顿的标准。**Bugly** 的卡顿检测也是基于这套标准。
+
+当监控到应用出现卡顿，如何定位造成卡顿的原因呢？很明显如果我们能够在发生卡顿的时候，保存应用的上下文，即卡顿发生时程序的堆栈调用和运行日志，那么就能凭借这些信息更加高效的定位到造成卡顿问题的来源。下图是 **Hertz** 监控卡顿的流程图
+
+<img src="Images/hertz_freezing.png" style="display: block; margin: 0 auto;" width="600">
+
 
 ## 参考资料
 
@@ -321,6 +336,7 @@ static inline NSTimeInterval MachTimeToSeconds(uint64_t machTime) {
 * [StartupMeasurer](https://github.com/fealebenpae/StartupMeasurer)
 * [Frame rate](https://en.wikipedia.org/wiki/Frame_rate)
 * [YYText](https://github.com/ibireme/YYText)
-* [移动端性能监控方案Hertz](http://tech.meituan.com/hertz.html)
+* [移动端性能监控方案 Hertz](http://tech.meituan.com/hertz.html)
 * [iOS 保持界面流畅的技巧](http://blog.ibireme.com/2015/11/12/smooth_user_interfaces_for_ios/)
+* [微信读书 iOS 性能优化总结](https://wereadteam.github.io/2016/05/03/WeRead-Performance/)
 
