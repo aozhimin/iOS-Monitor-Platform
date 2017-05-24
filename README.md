@@ -189,7 +189,11 @@ int64_t getUsedMemory()
 
 先来研究下冷启动，因为在它里面存在很多资源密集型的操作，下面先看看苹果官方文档给的应用的启动时序图
 
-<img src="Images/app_launch_fg.png" style="display: block; margin: 0 auto;" width="500">
+<p align="center">
+
+<img src="Images/app_launch_fg.png" width="500">
+
+</p>
 
 t(App 总启动时间) = t1(`main()`之前的加载时间) + t2(`main()`之后的加载时间)。
 
@@ -312,13 +316,21 @@ static inline NSTimeInterval MachTimeToSeconds(uint64_t machTime) {
 
 从一个像素到最后真正显示在屏幕上，iPhone 究竟在这个过程中做了些什么？要了解背后的运作流程，首先需要了解屏幕显示的原理。iOS 上完成图形的显示实际上 CPU、GPU 和显示器协同工作的结果，具体来说，CPU 负责计算显示内容，包括视图的创建、布局计算、图片解码、文本绘制等，CPU 完成计算后会将计算内容提交给 GPU，GPU 进行变换、合成、渲染后将渲染结果提交到帧缓冲区，当下一次垂直同步信号（简写也是 V-Sync）到来时，最后显示到屏幕上。下面是显示流程的示意图：
 
-<img src="Images/ios_screen_display.png" style="display: block; margin: 0 auto;" width="600">
+<p align="center">
+
+<img src="Images/ios_screen_display.png" width="600">
+
+</p>
 
 上文中提到 V-Sync 是什么，以及为什么要在 iPhone 的显示流程引入它呢？在 iPhone 中使用的是双缓冲机制，即上图中的 FrameBuffer 有两个缓冲区，双缓冲区的引入是为了提升显示效率，但是与此同时，他引入了一个新的问题，当视频控制器还未读取完成时，比如屏幕内容刚显示一半时，GPU 将新的一帧内容提交到帧缓冲区并把两个缓冲区进行交换后，视频控制器就会把新的一帧数据的下半段显示到屏幕上，造成画面撕裂现象，V-Sync 就是为了解决画面撕裂问题，开启 V-Sync 后，GPU 会在显示器发出 V-Sync 信号后，去进行新帧的渲染和缓冲区的更新。
 
 搞清楚了 iPhone 的屏幕显示原理后，下面来看看在 iPhone 上为什么会出现卡顿现象，上文已经提及在图像真正在屏幕显示之前，CPU 和 GPU 需要完成自身的任务，而如果他们完成的时间错过了下一次 V-Sync 的到来（通常是1000/60=16.67ms），这样就会出现显示屏还是之前帧的内容，这就是界面卡顿的原因。不难发现，无论是 CPU 还是 GPU 引起错过 V-Sync 信号，都会造成界面卡顿。
 
-<img src="Images/ios_frame_drop.png" style="display: block; margin: 0 auto;" width="600">
+<p align="center">
+
+<img src="Images/ios_frame_drop.png" width="600">
+
+</p>
 
 ### 如何监控卡顿
 
@@ -331,7 +343,11 @@ FPS 的刷新频率非常快，并且容易发生抖动，因此直接通过比�
 
 当监控到应用出现卡顿，如何定位造成卡顿的原因呢？很明显如果我们能够在发生卡顿的时候，保存应用的上下文，即卡顿发生时程序的堆栈调用和运行日志，那么就能凭借这些信息更加高效的定位到造成卡顿问题的来源。下图是 **Hertz** 监控卡顿的流程图
 
-<img src="Images/hertz_freezing.png" style="display: block; margin: 0 auto;" width="600">
+<p align="center">
+
+<img src="Images/hertz_freezing.png" width="600">
+
+</p>
 
 主线程卡顿监控的实现思路：开辟一个子线程，然后实时计算 `kCFRunLoopBeforeSources` 和 `kCFRunLoopAfterWaiting` 两个状态区域之间的耗时是否超过某个阀值，来断定主线程的卡顿情况
 
@@ -589,9 +605,11 @@ didReceiveResponse:(NSURLResponse *)response {
 
 ### CFNetwork
 
-<img src="Images/cfnetwork_monitor.jpg" style="display: block; margin: 0 auto;" width="500">
+<p align="center">
 
+<img src="Images/cfnetwork_monitor.jpg" width="500">
 
+</p>
 
 ## Author
 
