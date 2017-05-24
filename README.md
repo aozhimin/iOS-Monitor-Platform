@@ -396,7 +396,7 @@ NSString *report = [PLCrashReportTextFormatter stringValueForCrashReport:reporte
 
 ## Traffic
 
-流量监控一般通过 `NSURLProtocol` 和 `CFNetwork` 两种方式，但是 `NSURLProtocol` 属于 **URL Loading System** 体系中，应用层的协议支持有限，只支持 **FTP**，**HTTP**，**HTTPS** 等几个应用层协议，对于使用其他协议的流量则束手无策，所以存在一定的局限性。监控底层网络库 `CFNetwork` 则没有这个限制，有些人可能会问为什么不用更加底层的 **BSD Socket**，不是可以得到更多的控制吗？**BSD Socket** 既不走系统中的VPN通道，也没相关的 API 来自动激活已经关闭掉的 Wi-Fi 或蜂窝无线设备，另外有人反映使用 **Fishhook** 没办法 hook **BSD Socket**，所以倾向使用 `CFNetwork` 实现流量监控。
+流量监控一般通过 `NSURLProtocol` 和 `CFNetwork` 这两种方式来实现，由于 `NSURLProtocol` 作为上层接口，使用起来更为方便，因此大部分 SDK 都选择它来实现流量监控，但是 `NSURLProtocol` 属于 **URL Loading System** 体系中，应用层的协议支持有限，只支持 **FTP**，**HTTP**，**HTTPS** 等几个应用层协议，对于使用其他协议的流量则束手无策，所以存在一定的局限性。监控底层网络库 `CFNetwork` 则没有这个限制，有些人可能会问为什么不用更加底层的 **BSD Socket**，不是可以得到更多的控制吗？**BSD Socket** 既不走系统中的VPN通道，也没相关的 API 来自动激活已经关闭掉的 Wi-Fi 或蜂窝无线设备，另外有人反映使用 **Fishhook** 没办法 hook **BSD Socket**，所以倾向使用 `CFNetwork` 实现流量监控。
 
 ### NSURLProtocol
 
