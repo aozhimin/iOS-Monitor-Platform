@@ -325,6 +325,74 @@ FPS 的刷新频率非常快，并且容易发生抖动，因此直接通过比�
 
 <img src="Images/hertz_freezing.png" style="display: block; margin: 0 auto;" width="600">
 
+主线程卡顿监控的实现思路：开辟一个子线程，然后实时计算 `kCFRunLoopBeforeSources` 和 `kCFRunLoopAfterWaiting` 两个状态区域之间的耗时是否超过某个阀值，来断定主线程的卡顿情况
+
+``` objective-c
+
+static void runLoopObserverCallBack(CFRunLoopObserverRef observer, CFRunLoopActivity activity, void *info)
+{
+    MyClass *object = (__bridge MyClass*)info;
+    
+    // 记录状态值
+    object->activity = activity;
+    
+    // 发送信号
+    dispatch_semaphore_t semaphore = moniotr->semaphore;
+    dispatch_semaphore_signal(semaphore);
+}
+- (void)registerObserver
+{
+    CFRunLoopObserverContext context = {0,(__bridge void*)self,NULL,NULL};
+    CFRunLoopObserverRef observer = CFRunLoopObserverCreate(kCFAllocatorDefault,
+                                                            kCFRunLoopAllActivities,
+                                                            YES,
+                                                            0,
+                                                            &runLoopObserverCallBack,
+                                                            &context);
+    CFRunLoopAddObserver(CFRunLoopGetMain(), observer, kCFRunLoopCommonModes);
+    
+    // 创建信号
+    semaphore = dispatch_semaphore_create(0);
+    
+    // 在子线程监控时长
+    dispatch_async(dispatch_get_global_queue(0, 0), ^{
+        while (YES)
+        {
+            // 假定连续5次超时50ms认为卡顿(当然也包含了单次超时250ms)
+            long st = dispatch_semaphore_wait(semaphore, dispatch_time(DISPATCH_TIME_NOW, 50*NSEC_PER_MSEC));
+            if (st != 0)
+            {
+                if (activity==kCFRunLoopBeforeSources || activity==kCFRunLoopAfterWaiting)
+                {
+                    if (++timeoutCount < 5)
+                        continue;
+                    // 检测到卡顿，进行卡顿上报
+                }
+            }
+            timeoutCount = 0;
+        }
+    });
+}
+
+                                                          
+```
+
+> 代码中使用 `timeoutCount` 变量
+
+当检测到了卡顿，下一步需要做的就是记录卡顿的现场，即此时程序的堆栈调用，可以借助开源库 **PLCrashReporter** 来实现，示例代码：
+
+``` objective-c
+
+PLCrashReporterConfig *config = [[PLCrashReporterConfig alloc] initWithSignalHandlerType:PLCrashReporterSignalHandlerTypeBSD
+                                                                   symbolicationStrategy:PLCrashReporterSymbolicationStrategyAll];
+PLCrashReporter *crashReporter = [[PLCrashReporter alloc] initWithConfiguration:config];
+NSData *data = [crashReporter generateLiveReport];
+PLCrashReport *reporter = [[PLCrashReport alloc] initWithData:data error:NULL];
+NSString *report = [PLCrashReportTextFormatter stringValueForCrashReport:reporter
+                                                          withTextFormat:PLCrashReportTextFormatiOS];
+                                                          
+```
+
 
 ## Author
 
@@ -345,4 +413,5 @@ Email: aozhimin0811@gmail.com
 * [移动端性能监控方案 Hertz](http://tech.meituan.com/hertz.html)
 * [iOS 保持界面流畅的技巧](http://blog.ibireme.com/2015/11/12/smooth_user_interfaces_for_ios/)
 * [微信读书 iOS 性能优化总结](https://wereadteam.github.io/2016/05/03/WeRead-Performance/)
+* [PLCrashReporter](https://www.plcrashreporter.org/)
 
