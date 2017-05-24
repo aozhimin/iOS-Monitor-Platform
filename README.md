@@ -1,6 +1,6 @@
 # iOS-Monitor-Platform
 
-这篇文章是我在开发 iOS 性能检测平台 SDK 搜集资料的总结和整理。主要会探讨下在 iOS 平台下如何采集性能指标，如 **CPU 占用率、内存使用情况、FPS、冷启动、热启动时间**等，剖析每一项指标的具体实现方式。
+这篇文章是我在开发 iOS 性能检测平台 SDK 搜集资料的总结和整理。主要会探讨下在 iOS 平台下如何采集性能指标，如 **CPU 占用率、内存使用情况、FPS、冷启动、热启动时间，流量**等，剖析每一项指标的具体实现方式。
 
 ## CPU
 
@@ -340,6 +340,7 @@ static void runLoopObserverCallBack(CFRunLoopObserverRef observer, CFRunLoopActi
     dispatch_semaphore_t semaphore = moniotr->semaphore;
     dispatch_semaphore_signal(semaphore);
 }
+
 - (void)registerObserver
 {
     CFRunLoopObserverContext context = {0,(__bridge void*)self,NULL,NULL};
@@ -377,7 +378,7 @@ static void runLoopObserverCallBack(CFRunLoopObserverRef observer, CFRunLoopActi
                                                           
 ```
 
-> 代码中使用 `timeoutCount` 变量
+> 代码中使用 `timeoutCount` 变量来覆盖多次连续的小卡顿，当累计次数超过5次，也会进入到卡顿逻辑
 
 当检测到了卡顿，下一步需要做的就是记录卡顿的现场，即此时程序的堆栈调用，可以借助开源库 **PLCrashReporter** 来实现，示例代码：
 
@@ -392,6 +393,196 @@ NSString *report = [PLCrashReportTextFormatter stringValueForCrashReport:reporte
                                                           withTextFormat:PLCrashReportTextFormatiOS];
                                                           
 ```
+
+## Traffic
+
+流量监控一般通过 `NSURLProtocol` 和 `CFNetwork` 两种方式，但是 `NSURLProtocol` 属于 **URL Loading System** 体系中，应用层的协议支持有限，只支持 **FTP**，**HTTP**，**HTTPS** 等几个应用层协议，对于使用其他协议的流量则束手无策，所以存在一定的局限性。监控底层网络库 `CFNetwork` 则没有这个限制，有些人可能会问为什么不用更加底层的 **BSD Socket**，不是可以得到更多的控制吗？**BSD Socket** 既不走系统中的VPN通道，也没相关的 API 来自动激活已经关闭掉的 Wi-Fi 或蜂窝无线设备，另外有人反映使用 **Fishhook** 没办法 hook **BSD Socket**，所以倾向使用 `CFNetwork` 实现流量监控。
+
+### NSURLProtocol
+
+``` objective-c
+
+//MyHttpProtocol.m
+
+#import <Foundation/Foundation.h>
+#import "MyHttpProtocol.h"
+
+@implementation MyHttpProtocol
+
++(BOOL)canInitWithRequest:(NSURLRequest *)request {    
+   NSString *scheme =[[request URL] scheme];
+    if([[scheme lowercaseString] isEqualToString:@"http"]||
+       [[scheme lowercaseString] isEqualToString:@"https"])
+    {
+        if([NSURLProtocol propertyForKey:@"processed" inRequest:request]){
+            return NO;
+        }
+        return YES;
+    }
+    return NO;
+}
+
+
++ (NSURLRequest *)canonicalRequestForRequest:(NSURLRequest *)request {
+    NSMutableURLRequest * duplicatedRequest;
+    duplicatedRequest =  [request mutableCopy];
+    [NSURLProtocol setProperty:@YES forKey:@"processed" inRequest:duplicatedRequest];
+    NSLog(@"%@",request.HTTPBody);
+    return (NSURLRequest *) duplicatedRequest;
+}
+
+#pragma mark - NSURLConnectionDelegate
+
+- (void)connection:(NSURLConnection *)connection
+  didFailWithError:(NSError *)error {
+    [[self client] URLProtocol:self didFailWithError:error];
+}
+
+- (BOOL)connectionShouldUseCredentialStorage:(NSURLConnection *)connection {
+    return YES;
+}
+
+- (void)connection:(NSURLConnection *)connection
+didReceiveAuthenticationChallenge:(NSURLAuthenticationChallenge *)challenge {
+    [[self client] URLProtocol:self didReceiveAuthenticationChallenge:challenge];
+}
+
+- (void)connection:(NSURLConnection *)connection
+didCancelAuthenticationChallenge:(NSURLAuthenticationChallenge *)challenge {
+    [[self client] URLProtocol:self didCancelAuthenticationChallenge:challenge];
+}
+
+#pragma mark - NSURLConnectionDataDelegate
+- (NSURLRequest *)connection:(NSURLConnection *)connection willSendRequest:(NSURLRequest *)request redirectResponse:(NSURLResponse *)response {
+    if (response != nil){
+        self.response = response;
+        [[self client] URLProtocol:self wasRedirectedToRequest:request redirectResponse:response];
+    }
+    return request;
+}
+
+- (void)connection:(NSURLConnection *)connection
+didReceiveResponse:(NSURLResponse *)response {
+    [[self client] URLProtocol:self didReceiveResponse:response cacheStoragePolicy:NSURLCacheStorageAllowed];
+    self.response = response;
+}
+
+- (void)connection:(NSURLConnection *)connection
+    didReceiveData:(NSData *)data {
+    NSString *mimeType = self.response.MIMEType;
+    if ([mimeType isEqualToString:@"application/json"]) {
+        NSArray *allMapRequests = [[NEHTTPModelManager defaultManager] allMapObjects];
+        for (NSInteger i=0; i < allMapRequests.count; i++) {
+            NEHTTPModel *req = [allMapRequests objectAtIndex:i];
+            if ([[ne_HTTPModel.ne_request.URL absoluteString] containsString:req.mapPath]) {
+                NSData *jsonData = [req.mapJSONData dataUsingEncoding:NSUTF8StringEncoding];
+                [[self client] URLProtocol:self didLoadData:jsonData];
+                [self.data appendData:jsonData];
+                return;
+
+            }
+        }
+    }
+    [[self client] URLProtocol:self didLoadData:data];
+    [self.data appendData:data];
+}
+
+- (NSCachedURLResponse *)connection:(NSURLConnection *)connection
+                  willCacheResponse:(NSCachedURLResponse *)cachedResponse {
+    return cachedResponse;
+}
+
+- (void)connectionDidFinishLoading:(NSURLConnection *)connection {
+    [[self client] URLProtocolDidFinishLoading:self];
+}
+
+                                                          
+```
+
+> **Hertz** 使用的是 `NSURLProtocol` 这种方式，通过继承 `NSURLProtocol`，实现 `NSURLConnectionDelegate` 来实现截取行为
+
+**URL Loading System** 允许加载多个 `NSURLProtocol`，他们存放在一个数组中，而 **AFNetworking** 只会使用这个数组中的第一个 `protocol`，可以通过 **Method Swizzling** 来解决这个问题，代码如下：
+
+``` objective-c
+
+#import <Foundation/Foundation.h>
+#import "MySessionConfiguration.h"
+#import "MyHttpProtocol.h"
+#import <objc/runtime.h>
+
+@implementation MySessionConfiguration
+
+//返回一个默认配置的单体
++ (MySessionConfiguration *)defaultConfiguration {
+    static MySessionConfiguration *staticConfiguration;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        staticConfiguration =[[MySessionConfiguration alloc] init];
+    });
+    return staticConfiguration;
+}
+
+
+- (instancetype)init {
+    self = [super init];
+    if(self){
+        self.isSwizzle=NO;
+    }
+    return self;
+}
+
+//load被调用的时候，其实吧session.configuration.protocolClasses 这个数组从原有配置换成了只有MyHttpProtocol
+- (void)load {
+    NSLog(@"----configuration load --");
+    self.isSwizzle=YES;
+    Class cls = NSClassFromString(@"__NSCFURLSessionConfiguration") ?:NSClassFromString(@"NSURLSessionConfiguration");
+    [self swizzleSelector:@selector(protocolClasses) fromClass:cls toClass:[self class]];
+
+}
+
+- (void)unload {
+    self.isSwizzle=NO;
+     Class cls = NSClassFromString(@"__NSCFURLSessionConfiguration") ?:NSClassFromString(@"NSURLSessionConfiguration");
+     [self swizzleSelector:@selector(protocolClasses) fromClass:cls toClass:[self class]];
+}
+
+- (void)swizzleSelector:(SEL)selector fromClass:(Class)original toClass:(Class)stub {
+    Method originalMethod = class_getInstanceMethod(original, selector);
+    Method stubMethod = class_getInstanceMethod(stub, selector);
+    if(!originalMethod || !stubMethod){
+        [NSException raise:NSInternalInconsistencyException format:@"Could't load NSURLSessionConfiguration "];
+    }
+
+   //真正的替换在这里
+    method_exchangeImplementations(originalMethod, stubMethod);
+}
+
+ //返回MyHttpProtocol
+- (NSArray *)protocolClasses {
+    return @[[MyHttpProtocol class]];
+}
+
+@end
+                                                          
+```
+
+然后在应用启动时候加载
+
+``` objective-c
+
+- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
+
+   [[[MySessionConfiguration alloc] init] load];
+
+    return YES;
+}
+                                                          
+```
+
+### CFNetwork
+
+<img src="Images/cfnetwork_monitor.jpg" style="display: block; margin: 0 auto;" width="500">
+
 
 
 ## Author
@@ -414,4 +605,7 @@ Email: aozhimin0811@gmail.com
 * [iOS 保持界面流畅的技巧](http://blog.ibireme.com/2015/11/12/smooth_user_interfaces_for_ios/)
 * [微信读书 iOS 性能优化总结](https://wereadteam.github.io/2016/05/03/WeRead-Performance/)
 * [PLCrashReporter](https://www.plcrashreporter.org/)
+* [NetworkEye](https://github.com/coderyi/NetworkEye)
+* [netfox](https://github.com/kasketis/netfox)
+* [网易NeteaseAPM iOS SDK技术实现分享](http://www.infoq.com/cn/articles/netease-ios-sdk-neteaseapm-technology-share)
 
