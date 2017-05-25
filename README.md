@@ -536,7 +536,7 @@ didReceiveResponse:(NSURLResponse *)response {
 
 @implementation MySessionConfiguration
 
-//返回一个默认配置的单体
+//默认的单例
 + (MySessionConfiguration *)defaultConfiguration {
     static MySessionConfiguration *staticConfiguration;
     static dispatch_once_t onceToken;
@@ -605,9 +605,19 @@ didReceiveResponse:(NSURLResponse *)response {
 
 ### CFNetwork
 
+**NeteaseAPM** 是通过代理模式实现对 `CFNetwork` 的监控，在 `CoreFoundation` Framework 的 `CFStream` 实现一个 Proxy Stream 从而达到拦截的目的，记录通过 `CFStream` 读取的网络数据长度，然后再转发给 Original Stream，流程图如下：
+
 <p align="center">
 
 <img src="Images/cfnetwork_monitor.jpg" width="500">
+
+</p>
+
+使用上述方式的缺点就是无法选择性的监控和 **HTTP** 相关的 `CFReadStream`，而不涉及来自文件和内存的 `CFReadStream`，**NeteaseAPM** 的解决方案是在系统构造 HTTP Stream 时，将一个 `NSInputStream` 的子类 `ProxyStream` 桥接为 `CFReadStream`，返回给用户，来达到单独监控 HTTP Stream的目的。
+
+<p align="center">
+
+<img src="Images/cfnetwork_monitor_1.jpg" width="500">
 
 </p>
 
@@ -633,5 +643,5 @@ Email: aozhimin0811@gmail.com
 * [PLCrashReporter](https://www.plcrashreporter.org/)
 * [NetworkEye](https://github.com/coderyi/NetworkEye)
 * [netfox](https://github.com/kasketis/netfox)
-* [网易NeteaseAPM iOS SDK技术实现分享](http://www.infoq.com/cn/articles/netease-ios-sdk-neteaseapm-technology-share)
+* [网易 NeteaseAPM iOS SDK 技术实现分享](http://www.infoq.com/cn/articles/netease-ios-sdk-neteaseapm-technology-share)
 
