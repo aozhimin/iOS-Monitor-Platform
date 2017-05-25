@@ -349,7 +349,7 @@ FPS 的刷新频率非常快，并且容易发生抖动，因此直接通过比�
 
 </p>
 
-主线程卡顿监控的实现思路：开辟一个子线程，然后实时计算 `kCFRunLoopBeforeSources` 和 `kCFRunLoopAfterWaiting` 两个状态区域之间的耗时是否超过某个阀值，来断定主线程的卡顿情况
+主线程卡顿监控的实现思路：开辟一个子线程，然后实时计算 `kCFRunLoopBeforeSources` 和 `kCFRunLoopAfterWaiting` 两个状态区域之间的耗时是否超过某个阀值，来断定主线程的卡顿情况，可以将这个过程想象成操场上跑圈的运动员，我们会每隔一段时间间隔去判断是否跑了一圈，如果发现在指定时间间隔没有跑完一圈，则认为在消息处理的过程中耗时太多，视为主线程卡顿。
 
 ``` objective-c
 
@@ -605,6 +605,8 @@ didReceiveResponse:(NSURLResponse *)response {
 
 ### CFNetwork
 
+## 概述
+
 **NeteaseAPM** 是通过代理模式实现对 `CFNetwork` 的监控，在 `CoreFoundation` Framework 的 `CFStream` 实现一个 Proxy Stream 从而达到拦截的目的，记录通过 `CFStream` 读取的网络数据长度，然后再转发给 Original Stream，流程图如下：
 
 <p align="center">
@@ -613,6 +615,14 @@ didReceiveResponse:(NSURLResponse *)response {
 
 </p>
 
+## 详细描述
+
+由于 `CFNetwork` 都是 **C** 函数实现，想要对 C 函数 进行 Hook 需要使用 **Dynamic Loader Hook** 库函数 - [fishhook](https://github.com/facebook/fishhook)，
+
+> **Dynamic Loader**（dyld）通过更新 **Mach-O** 文件中保存的指针的方法来绑定符号。借用它可以在 runtime 修改 **C** 函数调用的函数指针！**fishhook** 的实现原理：遍历 `__DATA segment` 里面 `__nl_symbol_ptr` 、`__la_symbol_ptr` 两个 section 里面的符号，通过 Indirect Symbol Table、Symbol Table 和 String Table 的配合，找到自己要替换的函数，达到 hook 的目的。
+
+`CFNetwork` 使用 `CFReadStreamRef` 做数据传递，使用回调函数来接收服务器响应。当回调函数收到流中有数据的通知后，将数据保存到客户端的内存中。显然对流的读取不适合使用修改字符串表的方式，如果这样做的话也会 hook 系统也在使用的 `read` 函数，而系统的 `read` 函数不仅仅被网络请求的 stream 调用，还有所有的文件处理，而且 hook 频繁调用的函数也是不合理的。
+
 使用上述方式的缺点就是无法选择性的监控和 **HTTP** 相关的 `CFReadStream`，而不涉及来自文件和内存的 `CFReadStream`，**NeteaseAPM** 的解决方案是在系统构造 HTTP Stream 时，将一个 `NSInputStream` 的子类 `ProxyStream` 桥接为 `CFReadStream`，返回给用户，来达到单独监控 HTTP Stream的目的。
 
 <p align="center">
@@ -620,6 +630,83 @@ didReceiveResponse:(NSURLResponse *)response {
 <img src="Images/cfnetwork_monitor_1.jpg" width="500">
 
 </p>
+
+具体实现思路是：首先设计一个继承自 `NSObject` 并持有 `NSInputStream` 对象的 **Proxy** 类，持有的 `NSInputStream` 记为 OriginalStream。将所有发向 Proxy 的消息转发给 OriginalStream 处理，然后再重写 `NSInputStream` 的 `read` 方法，如此一来，我们就可以获取到 stream 的大小了。
+`XXInputStreamProxy` 类的代码如下：
+
+``` objective-c
+
+- (instancetype)initWithStream:(id)stream {
+    if (self = [super init]) {
+        _stream = stream;
+    }
+    return self;
+}
+
+- (NSMethodSignature *)methodSignatureForSelector:(SEL)aSelector {
+    return [_stream methodSignatureForSelector:aSelector];
+}
+
+- (void)forwardInvocation:(NSInvocation *)anInvocation {
+    [anInvocation invokeWithTarget:_stream];
+}
+
+- (NSInteger)read:(uint8_t *)buffer maxLength:(NSUInteger)len {
+    NSInteger readSize = [_stream read:buffer maxLength:len];
+    // 记录 readSize
+    return readSize;
+}
+                                                        
+```
+
+``` objective-c
+
+static CFReadStreamRef (*original_CFReadStreamCreateForHTTPRequest)(CFAllocatorRef __nullable alloc,
+                                                                    CFHTTPMessageRef request);
+                         
+/**
+ XXInputStreamProxy 持有 original CFReadStreamRef，转发消息到 original CFReadStreamRef，
+ 在 read 方法中记录获取数据的大小
+ */
+static CFReadStreamRef XX_CFReadStreamCreateForHTTPRequest(CFAllocatorRef alloc,
+                                                           CFHTTPMessageRef request) {
+    // 使用系统方法的函数指针完成系统的实现
+    CFReadStreamRef originalCFStream = original_CFReadStreamCreateForHTTPRequest(alloc, request);
+    // 将 CFReadStreamRef 转换成 NSInputStream，并保存在 XXInputStreamProxy，最后返回的时候再转回 CFReadStreamRef
+    NSInputStream *stream = (__bridge NSInputStream *)originalCFStream;
+    XXInputStreamProxy *outStream = [[XXInputStreamProxy alloc] initWithClient:stream];
+    CFRelease(originalCFStream);
+    CFReadStreamRef result = (__bridge_retained CFReadStreamRef)outStream;
+    return result;
+}                                                             
+                                                        
+```
+使用 **fishhook** 替换函数地址
+
+``` objective-c
+
+void save_original_symbols() {
+    original_CFReadStreamCreateForHTTPRequest = dlsym(RTLD_DEFAULT, "CFReadStreamCreateForHTTPRequest");
+}
+                                                          
+```
+
+``` objective-c
+
+rebind_symbols((struct rebinding[1]){{"CFReadStreamCreateForHTTPRequest", XX_CFReadStreamCreateForHTTPRequest, (void *)& original_CFReadStreamCreateForHTTPRequest}}, 1);
+                                                          
+```
+
+
+根据 `CFNetwork` API 的调用方式，使用 **fishhook** 和 Proxy Stream 获取 **C** 函数的设计模型如下：
+
+<p align="center">
+
+<img src="Images/cfnetwork_monitor_2.png" width="500">
+
+</p>
+
+
 
 ## Author
 
@@ -644,4 +731,5 @@ Email: aozhimin0811@gmail.com
 * [NetworkEye](https://github.com/coderyi/NetworkEye)
 * [netfox](https://github.com/kasketis/netfox)
 * [网易 NeteaseAPM iOS SDK 技术实现分享](http://www.infoq.com/cn/articles/netease-ios-sdk-neteaseapm-technology-share)
+* [Mobile Application Monitor IOS组件设计技术分享](http://bbs.netease.im/read-tid-149)
 
