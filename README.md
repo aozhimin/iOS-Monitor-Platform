@@ -8,7 +8,7 @@
 
 众所周知，糟糕的应用性能和稳定性是用户对应用作出差评并可能导致用户流失的主要原因。而除非得到用户的反馈，否则我们无法得知线上用户在使用应用遇到的各种性能问题，显然，凭借用户的反馈来得知应用的性能问题会使得开发团队很被动，性能监控 SDK 的定位就是帮助开发团队发现并排查性能问题，进而提升应用的性能。
 
-这篇文章是我在开发 iOS 性能监控平台 SDK 过程前期的调研和沉淀。主要会探讨下在 iOS 平台下如何采集性能指标，如 **CPU 占用率、内存使用情况、FPS、冷启动、热启动时间，流量**等，剖析每一项指标的具体实现方式，SDK 的实现会有一定的技术难度，这也是我为什么写这篇文章的原因，我希望能够将开发过程中的一些心得和体会记录下来，同时后续我会将实现 SDK 的详细细节开源出来，希望能对读者有所帮助。
+这篇文章是我在开发 iOS 性能监控平台 SDK 过程前期的调研和沉淀。主要会探讨下在 iOS 平台下如何采集性能指标，如 **CPU 占用率、内存使用情况、FPS、冷启动、热启动时间，流量，耗电量**等，剖析每一项指标的具体实现方式，SDK 的实现会有一定的技术难度，这也是我为什么写这篇文章的原因，我希望能够将开发过程中的一些心得和体会记录下来，同时后续我会将实现 SDK 的详细细节开源出来，希望能对读者有所帮助。
 
 ## CPU
 
@@ -605,7 +605,7 @@ didReceiveResponse:(NSURLResponse *)response {
 
 ### CFNetwork
 
-## 概述
+#### 概述
 
 **NeteaseAPM** 是通过代理模式实现对 `CFNetwork` 的监控，在 `CoreFoundation` Framework 的 `CFStream` 实现一个 Proxy Stream 从而达到拦截的目的，记录通过 `CFStream` 读取的网络数据长度，然后再转发给 Original Stream，流程图如下：
 
@@ -615,7 +615,7 @@ didReceiveResponse:(NSURLResponse *)response {
 
 </p>
 
-## 详细描述
+#### 详细描述
 
 由于 `CFNetwork` 都是 **C** 函数实现，想要对 C 函数 进行 Hook 需要使用 **Dynamic Loader Hook** 库函数 - [fishhook](https://github.com/facebook/fishhook)，
 
@@ -705,6 +705,9 @@ rebind_symbols((struct rebinding[1]){{"CFReadStreamCreateForHTTPRequest", XX_CFR
 <img src="Images/cfnetwork_monitor_2.png" width="500">
 
 </p>
+
+
+## Power consumption
 
 
 
