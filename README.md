@@ -351,7 +351,6 @@ FPS 的刷新频率非常快，并且容易发生抖动，因此直接通过比�
 主线程卡顿监控的实现思路：开辟一个子线程，然后实时计算 `kCFRunLoopBeforeSources` 和 `kCFRunLoopAfterWaiting` 两个状态区域之间的耗时是否超过某个阀值，来断定主线程的卡顿情况，可以将这个过程想象成操场上跑圈的运动员，我们会每隔一段时间间隔去判断是否跑了一圈，如果发现在指定时间间隔没有跑完一圈，则认为在消息处理的过程中耗时太多，视为主线程卡顿。
 
 ``` objective-c
-
 static void runLoopObserverCallBack(CFRunLoopObserverRef observer, CFRunLoopActivity activity, void *info)
 {
     MyClass *object = (__bridge MyClass*)info;
@@ -406,15 +405,13 @@ static void runLoopObserverCallBack(CFRunLoopObserverRef observer, CFRunLoopActi
 当检测到了卡顿，下一步需要做的就是记录卡顿的现场，即此时程序的堆栈调用，可以借助开源库 **PLCrashReporter** 来实现，示例代码：
 
 ``` objective-c
-
 PLCrashReporterConfig *config = [[PLCrashReporterConfig alloc] initWithSignalHandlerType:PLCrashReporterSignalHandlerTypeBSD
                                                                    symbolicationStrategy:PLCrashReporterSymbolicationStrategyAll];
 PLCrashReporter *crashReporter = [[PLCrashReporter alloc] initWithConfiguration:config];
 NSData *data = [crashReporter generateLiveReport];
 PLCrashReport *reporter = [[PLCrashReport alloc] initWithData:data error:NULL];
 NSString *report = [PLCrashReportTextFormatter stringValueForCrashReport:reporter
-                                                          withTextFormat:PLCrashReportTextFormatiOS];
-                                                          
+                                                          withTextFormat:PLCrashReportTextFormatiOS];                                                
 ```
 
 ## Traffic
@@ -527,7 +524,6 @@ didReceiveResponse:(NSURLResponse *)response {
 **URL Loading System** 允许加载多个 `NSURLProtocol`，将他们存放在一个数组中，而 **AFNetworking** 只会使用这个数组中的第一个 `protocol`，可以通过 **Method Swizzling** 来解决这个问题，代码如下：
 
 ``` objective-c
-
 #import <Foundation/Foundation.h>
 #import "MySessionConfiguration.h"
 #import "MyHttpProtocol.h"
@@ -585,21 +581,18 @@ didReceiveResponse:(NSURLResponse *)response {
     return @[[MyHttpProtocol class]];
 }
 
-@end
-                                                          
+@end                                               
 ```
 
 然后在应用启动时候加载
 
 ``` objective-c
-
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
 
    [[[MySessionConfiguration alloc] init] load];
 
     return YES;
-}
-                                                          
+}                                                     
 ```
 
 ### CFNetwork
@@ -688,17 +681,13 @@ static CFReadStreamRef XX_CFReadStreamCreateForHTTPRequest(CFAllocatorRef alloc,
 使用 **fishhook** 替换函数地址
 
 ``` objective-c
-
 void save_original_symbols() {
     original_CFReadStreamCreateForHTTPRequest = dlsym(RTLD_DEFAULT, "CFReadStreamCreateForHTTPRequest");
-}
-                                                          
+}                                                      
 ```
 
 ``` objective-c
-
-rebind_symbols((struct rebinding[1]){{"CFReadStreamCreateForHTTPRequest", XX_CFReadStreamCreateForHTTPRequest, (void *)& original_CFReadStreamCreateForHTTPRequest}}, 1);
-                                                          
+rebind_symbols((struct rebinding[1]){{"CFReadStreamCreateForHTTPRequest", XX_CFReadStreamCreateForHTTPRequest, (void *)& original_CFReadStreamCreateForHTTPRequest}}, 1);                                                    
 ```
 
 
