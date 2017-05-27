@@ -709,7 +709,122 @@ rebind_symbols((struct rebinding[1]){{"CFReadStreamCreateForHTTPRequest", XX_CFR
 
 ## Power consumption
 
+iOS 设备的电量一直是用户非常关心的问题。如果 iOS 应用由于某些缺陷成为电量杀手，用户会毫不犹豫卸载应用，所以耗电也是 App 性能的衡量标准之一。 
+电量获取三种方案对比如下：
 
+|方案|优点|缺点|
+|:---:|:----:|:----:|
+|UIDevice 属性|API 简单，易于使用|粗粒度，不符合需求|
+|IOKit|可以设备当前的电流和电压|粒度较粗，无法到应用级别|
+|越狱|可以获取应用每小时耗电量|时间间隔太长，不符合需求|
+
+### UIDevice
+
+`UIDevice` 提供了获取设备电池的相关信息，包括当前电池的状态以及电量。获取电池信息之前需要先将 `batteryMonitoringEnabled` 属性设置为 `YES`，然后就可以通过 `batteryState` 和 `batteryLevel` 获取电池信息。
+
+* 是否开启电池监控，默认为 `NO`
+
+``` objective-c
+// default is NO             
+@property(nonatomic,getter=isBatteryMonitoringEnabled) BOOL batteryMonitoringEnabled NS_AVAILABLE_IOS(3_0) __TVOS_PROHIBITED;                
+```
+
+* 电池电量，取值 0-1.0，如果 `batteryState` 是 `UIDeviceBatteryStateUnknown`，则电量是 -1.0
+
+``` objective-c
+// 0 .. 1.0. -1.0 if UIDeviceBatteryStateUnknown
+@property(nonatomic,readonly) float batteryLevel NS_AVAILABLE_IOS(3_0) __TVOS_PROHIBITED; 
+```
+
+* 电池状态，为 `UIDeviceBatteryState` 枚举类型，总共有四种状态
+
+``` objective-c
+// UIDeviceBatteryStateUnknown if monitoring disabled
+@property(nonatomic,readonly) UIDeviceBatteryState batteryState NS_AVAILABLE_IOS(3_0) __TVOS_PROHIBITED;  
+
+typedef NS_ENUM(NSInteger, UIDeviceBatteryState) {
+    UIDeviceBatteryStateUnknown,
+    UIDeviceBatteryStateUnplugged,   // on battery, discharging
+    UIDeviceBatteryStateCharging,    // plugged in, less than 100%
+    UIDeviceBatteryStateFull,        // plugged in, at 100%
+} __TVOS_PROHIBITED;              // available in iPhone 3.0
+```
+
+获取电量代码
+
+``` objective-c
+  [UIDevice currentDevice].batteryMonitoringEnabled = YES;
+  [[NSNotificationCenter defaultCenter]
+ addObserverForName:UIDeviceBatteryLevelDidChangeNotification
+ object:nil queue:[NSOperationQueue mainQueue]
+ usingBlock:^(NSNotification *notification) {
+     // Level has changed
+     NSLog(@"Battery Level Change");
+     NSLog(@"电池电量：%.2f", [UIDevice currentDevice].batteryLevel);
+ }];
+                             
+```
+
+> 使用 `UIDevice` 可以非常方便获取到电量，经测试发现，在 iOS 8.0 之前，`batteryLevel` 只能精确到5%，而在 `iOS` 8.0 之后，精确度可以达到1%，但这种方案的数据不是很精确，没办法应用到生产环境。
+
+### IOKit
+
+`IOKit` 是 iOS 系统的一个私有框架，它可以被用来和硬件和设备的详细信息，也是和硬件和内核服务通信的底层框架。通过它可以获取设备电量信息，精确度达到1%。
+
+``` objective-c
+- (double)getBatteryLevel {
+    // returns a blob of power source information in an opaque CFTypeRef
+    CFTypeRef blob = IOPSCopyPowerSourcesInfo();
+    // returns a CFArray of power source handles, each of type CFTypeRef
+    CFArrayRef sources = IOPSCopyPowerSourcesList(blob);
+    CFDictionaryRef pSource = NULL;
+    const void *psValue;
+    // returns the number of values currently in an array
+    int numOfSources = CFArrayGetCount(sources);
+    // error in CFArrayGetCount
+    if (numOfSources == 0) {
+        NSLog(@"Error in CFArrayGetCount");
+        return -1.0f;
+    }
+
+    // calculating the remaining energy
+    for (int i=0; i<numOfSources; i++) {
+        // returns a CFDictionary with readable information about the specific power source
+        pSource = IOPSGetPowerSourceDescription(blob, CFArrayGetValueAtIndex(sources, i));
+        if (!pSource) {
+            NSLog(@"Error in IOPSGetPowerSourceDescription");
+            return -1.0f;
+        }
+        psValue = (CFStringRef) CFDictionaryGetValue(pSource, CFSTR(kIOPSNameKey));
+
+        int curCapacity = 0;
+        int maxCapacity = 0;
+        double percentage;
+
+        psValue = CFDictionaryGetValue(pSource, CFSTR(kIOPSCurrentCapacityKey));
+        CFNumberGetValue((CFNumberRef)psValue, kCFNumberSInt32Type, &curCapacity);
+
+        psValue = CFDictionaryGetValue(pSource, CFSTR(kIOPSMaxCapacityKey));
+        CFNumberGetValue((CFNumberRef)psValue, kCFNumberSInt32Type, &maxCapacity);
+
+        percentage = ((double) curCapacity / (double) maxCapacity * 100.0f);
+        NSLog(@"curCapacity : %d / maxCapacity: %d , percentage: %.1f ", curCapacity, maxCapacity, percentage);
+        return percentage;
+    }
+    return -1.0f;
+}                                        
+```
+
+### 越狱方案
+
+这种方案需要链接 `iOSDiagnosticsSupport` 私有库，然后通过 **Runtime** 拿到 `MBSDevice` 实例，调用 `copyPowerLogsToDir:` 方法将电量日志信息（`PLBLMAccountingService_Aggregate_BLMAppEnergyBreakdown`）表拷贝到硬盘的指定路径，日志信息表中包含了 iOS 系统采集的小时级别的耗电量。具体实现方案可以参考 [iOS-Diagnostics](https://github.com/lyonanderson/iOS-Diagnostics)，
+从电量日志表中查询的 SQL 语句如下：
+
+``` SQL
+SELECT datetime(timestamp, 'unixepoch') AS TIME, BLMAppName FROM PLBLMAccountingService_Aggregate_BLMAppEnergyBreakdown WHERE BLMEnergy_BackgroundLocation > 0  ORDER BY TIME
+```       
+
+> 发现 `iOSDiagnosticsSupport` Framework 在 iOS 10 之后已经名字被改成 `DiagnosticsSupport`，而且 `MBSDevice` 类也被隐藏了。
 
 ## Author
 
@@ -735,4 +850,5 @@ Email: aozhimin0811@gmail.com
 * [netfox](https://github.com/kasketis/netfox)
 * [网易 NeteaseAPM iOS SDK 技术实现分享](http://www.infoq.com/cn/articles/netease-ios-sdk-neteaseapm-technology-share)
 * [Mobile Application Monitor IOS组件设计技术分享](http://bbs.netease.im/read-tid-149)
+* [UIDeviceListener](https://github.com/eldade/UIDeviceListener)
 
