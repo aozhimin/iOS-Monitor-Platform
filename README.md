@@ -189,18 +189,66 @@ float cpu_usage()
 
 ## Memory
 
-获取当前 **App Memory** 使用情况
+> 物理内存（**RAM**）与 **CPU** 一样都是系统中最稀少的资源，也是最有可能产生竞争的资源，应用内存与性能直接相关 - 通常是以牺牲别的应用为代价。 iOS 中不像 PC 端，它没有交换空间作为备选资源，这就使得内存资源尤为重要。事实上，在 iOS 中就有 **Jetsam** 机制负责处理系统低 **RAM** 事件，**Jetsam** 是一种类似 Linux 的 Out-Of-Memory(Killer) 的机制。
+
+`mach_task_basic_info` 结构体存储了 Mach task 的内存使用信息，其中 `resident_size` 就是应用使用的物理内存大小，`virtual_size` 是虚拟内存大小。
+
+``` c
+#define MACH_TASK_BASIC_INFO     20         /* always 64-bit basic info */
+struct mach_task_basic_info {
+        mach_vm_size_t  virtual_size;       /* virtual memory size (bytes) */
+        mach_vm_size_t  resident_size;      /* resident memory size (bytes) */
+        mach_vm_size_t  resident_size_max;  /* maximum resident memory size (bytes) */
+        time_value_t    user_time;          /* total user run time for
+                                               terminated threads */
+        time_value_t    system_time;        /* total system run time for
+                                               terminated threads */
+        policy_t        policy;             /* default policy for new threads */
+        integer_t       suspend_count;      /* suspend count for task */
+};
+```
+
+这里需要提到的是有些文章使用的 `task_basic_info` 结构体，而不是上文的 `mach_task_basic_info`，需要注意的是 Apple 已经不建议使用 `task_basic_info` 结构体了。
+
+``` c
+/* localized structure - cannot be safely passed between tasks of differing sizes */
+/* Don't use this, use MACH_TASK_BASIC_INFO instead */
+struct task_basic_info {
+        integer_t       suspend_count;  /* suspend count for task */
+        vm_size_t       virtual_size;   /* virtual memory size (bytes) */
+        vm_size_t       resident_size;  /* resident memory size (bytes) */
+        time_value_t    user_time;      /* total user run time for
+                                           terminated threads */
+        time_value_t    system_time;    /* total system run time for
+                                           terminated threads */
+	policy_t	policy;		/* default policy for new threads */
+};
+```
+
+`task_info` API 根据指定的 `flavor` 类型返回 `target_task` 的信息。
+
+``` c
+kern_return_t task_info
+(
+	task_name_t target_task,
+	task_flavor_t flavor,
+	task_info_t task_info_out,
+	mach_msg_type_number_t *task_info_outCnt
+);
+```
+
+最后得到获取当前 **App Memory** 的使用情况
 
 ``` objective-c
 - (NSUInteger)getResidentMemory
 {
-    struct task_basic_info t_info;
-	mach_msg_type_number_t t_info_count = TASK_BASIC_INFO_COUNT;
+    struct mach_task_basic_info info;
+    mach_msg_type_number_t count = sizeof(info) / sizeof(integer_t);
 	
-	int r = task_info(mach_task_self(), TASK_BASIC_INFO, (task_info_t)&t_info, &t_info_count);
+	int r = task_info(mach_task_self(), MACH_TASK_BASIC_INFO, (task_info_t)& info, & count);
 	if (r == KERN_SUCCESS)
 	{
-		return t_info.resident_size;
+		return info.resident_size;
 	}
 	else
 	{
@@ -208,6 +256,13 @@ float cpu_usage()
 	}
 }
 
+```
+与获取 **CPU** 占用率类似，在调用 `task_info` 时，`target_task` 传入的 `mach_task_self()`参数，表示获取当前的 Mach task，另外 `flavor` 传的是 `MACH_TASK_BASIC_INFO`，使用这个类型会返回 `mach_task_basic_info` 结构体，表示返回 `target_task` 的基本信息，比如 task 的挂起次数和驻留页面数量。
+
+如果想获取设备所有物理内存大小可以通过 `NSProcessInfo`。
+
+``` objective-c
+[NSProcessInfo processInfo].physicalMemory
 ```
 
 获取当前设备的 **Memory** 使用情况
@@ -894,6 +949,7 @@ Email: aozhimin0811@gmail.com
 
 * 《Mac OS X and iOS Internals: To the Apple’s Core》
 * 《OS X and iOS Kernel Programming》
+* [Handling low memory conditions in iOS and Mavericks](http://newosxbook.com/articles/MemoryPressure.html)
 * [iOS-System-Services](https://github.com/Shmoopi/iOS-System-Services)
 * [GT](https://github.com/Tencent/GT)
 * [Optimizing Facebook for iOS start time](https://code.facebook.com/posts/1675399786008080/optimizing-facebook-for-ios-start-time/)
