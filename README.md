@@ -140,7 +140,9 @@ float cpu_usage()
 }
 ```
 
-在调用 `task_threads` API 是传入的 `mach_task_self()`参数，表示获取当前的 Mach task，注意方法最后要调用 `vm_deallocate`，防止出现内存泄漏。据测试，该方法采集的 **CPU** 数据和腾讯的 [GT](https://github.com/Tencent/GT)、**Instruments** 数据接近。
+在调用 `task_threads` API 是传入的 `mach_task_self()`参数，表示获取当前的 Mach task，`flavor` 参数传的是 `THREAD_BASIC_INFO `，使用这个类型会返回线程的基本信息，定义在 `thread_basic_info_t` 结构体，包含了用户和系统的运行时间，运行状态和调度优先级。
+
+注意方法最后要调用 `vm_deallocate`，防止出现内存泄漏。据测试，该方法采集的 **CPU** 数据和腾讯的 [GT](https://github.com/Tencent/GT)、**Instruments** 数据接近。
 
 > 由于监控 **CPU** 的线程也会占用 **CPU** 资源，所以为了让结果更客观，可以考虑在计算的时候将监控线程排除。
 
