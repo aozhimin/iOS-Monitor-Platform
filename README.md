@@ -6,13 +6,72 @@
 
 ## 为什么写这篇文章？
 
-随着移动开发向纵深发展，用户越来越关心应用的体验，开发者必须关注应用性能所带来的用户流失问题。据统计，有十种应用性能问题危害最大，分别为：连接超时、闪退、卡顿、崩溃、黑白屏、网络劫持、交互性能差、CPU 使用率问题、内存泄露、不良接口。开发者难以兼顾所有的性能问题，而在传统的开发流程中，我们解决性能问题的方式通常是在得到线上用户的反馈后，再由开发人员去分析引发问题的根源；显然，凭借用户的反馈来得知应用的性能问题这种方式很原始，也很不高效，它使得开发团队在应对应用性能问题上很被动；所以寻找一种更专业和高效的手段来保障应用的性能就变得势在必行。性能监控 SDK 的定位就是帮助开发团队快速精确定位性能问题，进而推动应用的性能和用户体验的提升。
+随着移动互联网向纵深发展，用户越来越关心应用的体验，开发者必须关注应用性能所带来的用户流失问题。据统计，有十种应用性能问题危害最大，分别为：连接超时、闪退、卡顿、崩溃、黑白屏、网络劫持、交互性能差、CPU 使用率问题、内存泄露、不良接口。开发者难以兼顾所有的性能问题，而在传统的开发流程中，我们解决性能问题的方式通常是在得到线上用户的反馈后，再由开发人员去分析引发问题的根源；显然，凭借用户的反馈来得知应用的性能问题这种方式很原始，也很不高效，它使得开发团队在应对应用性能问题上很被动；所以寻找一种更专业和高效的手段来保障应用的性能就变得势在必行。性能监控 SDK 的定位就是帮助开发团队快速精确定位性能问题，进而推动应用的性能和用户体验的提升。
 
 这篇文章是我在开发 iOS 性能监控平台 SDK 过程前期的调研和沉淀。主要会探讨下在 iOS 平台下如何采集性能指标，如 **CPU 占用率、内存使用情况、FPS、冷启动、热启动时间，流量，耗电量**等，剖析每一项指标的具体实现方式，SDK 的实现会有一定的技术难度，这也是我为什么写这篇文章的原因，我希望能够将开发过程中的一些心得和体会记录下来，同时后续我会将实现 SDK 的详细细节开源出来，希望能对读者有所帮助。
 
 ## CPU
 
-获取当前应用的 **CPU** 占有率，注意方法最后要调用 `vm_deallocate`，防止出现内存泄漏，该方法采集的 **CPU** 数据和腾讯的 [GT](https://github.com/Tencent/GT)、**Instruments** 数据接近。
+> A CPU chip is designed for portable computers, it is typically housed in a smaller chip package, but more importantly, in order to run cooler, it uses lower voltages than its desktop counterpart and has more "sleep mode" capability. A mobile processor can be throttled down to different power levels or sections of the chip can be turned off entirely when not in use. Further, the clock frequency may be stepped down under low processor loads. This stepping down conserves power and prolongs battery life.
+
+**CPU** 是移动设备最重要的计算资源，设计糟糕的应用可能会造成 **CPU** 持续以高负载运行，一方面会导致用户使用过程遭遇卡顿；另一方面也会导致手机发热发烫，电量被快速消耗完；严重影响用户体验。
+
+如果想避免出现上述情况，可以通过监控应用的 **CPU** 占用率，在 iOS 中如何实现 **CPU** 占用率的监控呢？事实上，学习过操作系统课程都了解线程是调度和分配的基本单位，而应用作为进程运行时，包含了多个不同的线程，显然如果我们能获取应用的所有线程占用 **CPU** 的情况，也就能知道应用的 **CPU** 占用率。
+
+> iOS 是基于Apple Darwin 内核，由 kernel、XNU 和 runtime 组成，XNU 是 Darwin 的内核，它是“X is not UNIX”的缩写，它是一个混合内核，由 Mach 微内核和 BSD 组成。Mach 内核是轻量级的平台，只能完成操作系统最基本的职责，比如：进程和线程、虚拟内存管理、任务调度、进程通信和消息传递机制。其他的工作，例如文件操作和设备访问，都由 BSD 层实现。
+
+<p align="center">
+
+<img src="Images/thread.png" width="500">
+
+</p>
+
+上图是权威著作《OS X Internal: A System Approach》给出的 Mac OS X 中进程子系统组成的概念视图，与 Mac OS X 类似， iOS 的线程技术也是基于 **Mach** 线程技术实现的，在 **Mach** 层中 `thread_basic_info` 结构体提供了线程的基本信息。
+
+``` c
+struct thread_basic_info {
+        time_value_t    user_time;      /* user run time */
+        time_value_t    system_time;    /* system run time */
+        integer_t       cpu_usage;      /* scaled cpu usage percentage */
+        policy_t        policy;         /* scheduling policy in effect */
+        integer_t       run_state;      /* run state (see below) */
+        integer_t       flags;          /* various flags (see below) */
+        integer_t       suspend_count;  /* suspend count for thread */
+        integer_t       sleep_time;     /* number of seconds that thread
+                                           has been sleeping */
+};
+
+```
+
+> 任务（task）是一种容器（container）对象，虚拟内存空间和其他资源都是通过这个容器对象管理的，这些资源包括设备和其他句柄。严格地说，Mach 的任务并不是其他操作系统中所谓的进程，因为 Mach 作为一个微内核的操作系统，并没有提供“进程”的逻辑，而只是提供了最基本的实现。不过在 BSD 的模型中，这两个概念有1：1的简单映射，每一个 BSD 进程（也就是 OS X 进程）都在底层关联了一个 Mach 任务对象。
+
+上面引用的是《OS X and iOS Kernel Programming》对 Mach task 的描述，Mach task 可以看作一个机器无关的 thread 执行环境的抽象
+一个 task 包含它的线程列表。内核提供了 `task_threads` API 调用获取指定 task 的线程列表，然后可以通过 `thread_info ` API 调用来查询指定线程的信息，`thread_info ` API 在 `thread_act.h` 中定义。
+
+``` c
+kern_return_t task_threads
+(
+	task_t target_task,
+	thread_act_array_t *act_list,
+	mach_msg_type_number_t *act_listCnt
+);
+```
+
+`task_threads` 将 `target_task` 任务中的所有线程保存在 `act_list` 数组中，数组中包含 `act_listCnt` 个条目。
+
+``` c
+kern_return_t thread_info
+(
+	thread_act_t target_act,
+	thread_flavor_t flavor,
+	thread_info_t thread_info_out,
+	mach_msg_type_number_t *thread_info_outCnt
+);
+```
+`thread_info` 查询 `flavor` 指定的 thread 信息，将信息返回到长度为 `thread_info_outCnt` 字节的 `thread_info_out` 缓存区中，
+
+
+有了上面的铺垫后，得到获取当前应用的 **CPU** 占用率的实现如下：
 
 ``` c
 #import <mach/mach.h>
@@ -79,9 +138,13 @@ float cpu_usage()
 
     return tot_cpu;
 }
-
 ```
-[GT](https://github.com/Tencent/GT) 中获得 App 的 **CPU** 占有率的方法
+
+在调用 `task_threads` API 是传入的 `mach_task_self()`参数，表示获取当前的 Mach task，注意方法最后要调用 `vm_deallocate`，防止出现内存泄漏。据测试，该方法采集的 **CPU** 数据和腾讯的 [GT](https://github.com/Tencent/GT)、**Instruments** 数据接近。
+
+> 由于监控 **CPU** 的线程也会占用 **CPU** 资源，所以为了让结果更客观，可以考虑在计算的时候将监控线程排除。
+
+下面是 [GT](https://github.com/Tencent/GT) 中获得 App 的 **CPU** 占用率的方法
 
 ``` objective-c
 - (float)getCpuUsage
@@ -829,6 +892,8 @@ Email: aozhimin0811@gmail.com
 
 ## 参考资料
 
+* 《Mac OS X and iOS Internals: To the Apple’s Core》
+* 《OS X and iOS Kernel Programming》
 * [iOS-System-Services](https://github.com/Shmoopi/iOS-System-Services)
 * [GT](https://github.com/Tencent/GT)
 * [Optimizing Facebook for iOS start time](https://code.facebook.com/posts/1675399786008080/optimizing-facebook-for-ios-start-time/)
