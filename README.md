@@ -827,36 +827,91 @@ Apple 在 iOS 10 的 `NSURLSessionTaskDelegate` 代理中新增了 `-URLSession:
 
 * `transactionMetrics`:`transactionMetrics` 数组包含了在执行任务时产生的每个请求/响应事务中收集的指标。
 
-``` objective-c
-/*
- * transactionMetrics array contains the metrics collected for every request/response transaction created during the task execution.
- */
-@property (copy, readonly) NSArray<NSURLSessionTaskTransactionMetrics *> *transactionMetrics;
-```
+	``` objective-c
+	/*
+	 * transactionMetrics array contains the metrics collected for every request/response transaction created during the task execution.
+	 */
+	@property (copy, readonly) NSArray<NSURLSessionTaskTransactionMetrics *> *transactionMetrics;
+	```
 
 * `taskInterval`:任务从创建到完成花费的总时间，任务的创建时间是任务被实例化时的时间；任务完成时间是任务的内部状态将要变为完成的时间。
 
-``` objective-c
-/*
- * Interval from the task creation time to the task completion time.
- * Task creation time is the time when the task was instantiated.
- * Task completion time is the time when the task is about to change its internal state to completed.
- */
-@property (copy, readonly) NSDateInterval *taskInterval;
-```
+	``` objective-c
+	/*
+	 * Interval from the task creation time to the task completion time.
+	 * Task creation time is the time when the task was instantiated.
+	 * Task completion time is the time when the task is about to change its internal state to completed.
+	 */
+	@property (copy, readonly) NSDateInterval *taskInterval;
+	```
 
 * `redirectCount`:记录了被重定向的次数。
 
-``` objective-c
-/*
- * redirectCount is the number of redirects that were recorded.
- */
-@property (assign, readonly) NSUInteger redirectCount;
-```
+	``` objective-c
+	/*
+	 * redirectCount is the number of redirects that were recorded.
+	 */
+	@property (assign, readonly) NSUInteger redirectCount;
+	```
 
-### NSURLSessionTaskTransactionMetrics
+#### NSURLSessionTaskTransactionMetrics
 
-`NSURLSessionTaskTransactionMetrics` 对象封装了任务执行时收集的性能指标，
+`NSURLSessionTaskTransactionMetrics` 对象封装了任务执行时收集的性能指标，包括了 `request` 和 `response` 属性，对应 HTTP 的请求和响应，还包括了从 ` fetchStartDate` 开始，到 `responseEndDate` 结束之间的指标，当然还有 `networkProtocolName` 和 `resourceFetchType` 属性。
+
+* `request`:表示了网络请求对象。
+
+	``` objective-c
+	/*
+	 * Represents the transaction request.
+	 */
+	@property (copy, readonly) NSURLRequest *request;
+	```
+
+* `response`:表示了网络响应对象，如果网络出错或没有响应时，`response` 为 `nil`。
+
+	``` objective-c
+	/*
+	 * Represents the transaction response. Can be nil if error occurred and no response was generated.
+	 */
+	@property (nullable, copy, readonly) NSURLResponse *response;
+	```
+
+* `networkProtocolName`:获取资源时使用的网络协议，由 ALPN 协商后标识的协议，比如 h2, http/1.1, spdy/3.1。
+
+	``` objective-c
+	@property (nullable, copy, readonly) NSString *networkProtocolName;
+	```
+
+* `isProxyConnection`:是否使用代理进行网络连接。
+
+	``` objective-c
+	/*
+	 * This property is set to YES if a proxy connection was used to fetch the resource.
+	 */
+	@property (assign, readonly, getter=isProxyConnection) BOOL proxyConnection;
+	```
+
+* `isReusedConnection`:是否复用已有连接。
+
+	``` objective-c
+	/*
+	 * This property is set to YES if a persistent connection was used to fetch the resource.
+	 */
+	@property (assign, readonly, getter=isReusedConnection) BOOL reusedConnection;
+	```
+
+* `resourceFetchType`:`NSURLSessionTaskMetricsResourceFetchType` 枚举类型，标识资源是通过网络加载，服务器推送还是本地缓存获取的。
+
+	``` objective-c
+	/*
+	 * Indicates whether the resource was loaded, pushed or retrieved from the local cache.
+	 */
+	@property (assign, readonly) NSURLSessionTaskMetricsResourceFetchType resourceFetchType;
+	```
+
+对于下面所有 `NSDate` 类型指标，如果任务没有完成，所有相应的 `EndDate` 指标都将为 `nil`。例如，如果 DNS 解析超时、失败或者客户端在解析成功之前取消，`domainLookupStartDate` 会有对应的数据，然而 `domainLookupEndDate` 已经在它之后的所有指标都为 `nil`。
+
+这幅图示意了一次 HTTP 请求在各环节分别做了哪些工作
 
 <p align="center">
 
@@ -864,32 +919,135 @@ Apple 在 iOS 10 的 `NSURLSessionTaskDelegate` 代理中新增了 `-URLSession:
 
 </p>
 
-* `request`:表示了网络请求对象。
+如果是复用已有的连接或者从本地缓存中获取资源，下面的指标都会被赋值为 `nil`：
 
-``` objective-c
-/*
- * Represents the transaction request.
- */
-@property (copy, readonly) NSURLRequest *request;
-```
+* domainLookupStartDate
+* domainLookupEndDate
+* connectStartDate
+* connectEndDate
+* secureConnectionStartDate
+* secureConnectionEndDate
 
-* `response`:表示了网络响应对象，如果网络出错或没有响应时，`response` 为 `nil`。
+* `fetchStartDate`:客户端开始请求的时间，无论资源是从服务器还是本地缓存中获取。
 
-``` objective-c
-/*
- * Represents the transaction response. Can be nil if error occurred and no response was generated.
- */
-@property (nullable, copy, readonly) NSURLResponse *response;
-```
+	``` objective-c
+	@property (nullable, copy, readonly) NSDate *fetchStartDate;
+	```
 
-* `networkProtocolName`:表示了网络响应对象，如果网络出错或没有响应时，`response` 为 `nil`。
+* `domainLookupStartDate`:DNS 解析开始时间，Domain -> IP 地址。
 
-``` objective-c
-@property (nullable, copy, readonly) NSString *networkProtocolName;
-```
+	``` objective-c
+	/*
+	 * domainLookupStartDate returns the time immediately before the user agent started the name lookup for the resource.
+	 */
+	@property (nullable, copy, readonly) NSDate *domainLookupStartDate;
+	```
 
+* `domainLookupEndDate`:DNS 解析完成时间，客户端已经获取到域名对应的 IP 地址。
 
+	``` objective-c
+	/*
+	 * domainLookupEndDate returns the time after the name lookup was completed.
+	 */
+	@property (nullable, copy, readonly) NSDate *domainLookupEndDate;
+	```
 
+* `connectStartDate`:客户端与服务器开始建立 TCP 连接的时间。
+
+	``` objective-c
+	/*
+	 * connectStartDate is the time immediately before the user agent started establishing the connection to the server.
+	 *
+	 * For example, this would correspond to the time immediately before the user agent started trying to establish the TCP connection.
+	 */
+	@property (nullable, copy, readonly) NSDate *connectStartDate;
+	```
+
+* `connectStartDate`:客户端与服务器开始建立 TCP 连接的时间。
+
+	``` objective-c
+	/*
+	 * connectStartDate is the time immediately before the user agent started establishing the connection to the server.
+	 *
+	 * For example, this would correspond to the time immediately before the user agent started trying to establish the TCP connection.
+	 */
+	@property (nullable, copy, readonly) NSDate *connectStartDate;
+	```
+
+	* `secureConnectionStartDate `:HTTPS 的 TLS 握手开始时间。
+	
+		``` objective-c
+		/*
+		 * If an encrypted connection was used, secureConnectionStartDate is the time immediately before the user agent started the security handshake to secure the current connection.
+		 *
+		 * For example, this would correspond to the time immediately before the user agent started the TLS handshake.
+		 *
+		 * If an encrypted connection was not used, this attribute is set to nil.
+		 */
+		@property (nullable, copy, readonly) NSDate *secureConnectionStartDate;
+		```
+		
+	* `secureConnectionEndDate`:HTTPS 的 TLS 握手结束时间。
+	
+		``` objective-c
+		/*
+		 * If an encrypted connection was used, secureConnectionEndDate is the time immediately after the security handshake completed.
+		 *
+		 * If an encrypted connection was not used, this attribute is set to nil.
+		 */
+		@property (nullable, copy, readonly) NSDate *secureConnectionEndDate;
+		```
+
+* `connectEndDate`:客户端与服务器建立 TCP 连接完成时间，包括 TLS 握手时间。
+
+	``` objective-c
+	/*
+	 * connectEndDate is the time immediately after the user agent finished establishing the connection to the server, including completion of security-related and other handshakes.
+	 */
+	@property (nullable, copy, readonly) NSDate *connectEndDate;
+	```
+	
+* `requestStartDate `:开始传输 HTTP 请求的 header 第一个字节的时间。
+
+	``` objective-c
+	/*
+	 * requestStartDate is the time immediately before the user agent started requesting the source, regardless of whether the resource was retrieved from the server or local resources.
+	 *
+	 * For example, this would correspond to the time immediately before the user agent sent an HTTP GET request.
+	 */
+	@property (nullable, copy, readonly) NSDate *requestStartDate;
+	```
+	
+* `requestEndDate `:HTTP 请求最后一个字节传输完成的时间。
+
+	``` objective-c
+	/*
+	 * requestEndDate is the time immediately after the user agent finished requesting the source, regardless of whether the resource was retrieved from the server or local resources.
+	 *
+	 * For example, this would correspond to the time immediately after the user agent finished sending the last byte of the request.
+	 */
+	@property (nullable, copy, readonly) NSDate *requestEndDate;
+	```
+	
+* `responseStartDate`:客户端从服务器接收到响应的第一个字节的时间。
+
+	``` objective-c
+	/*
+	 * responseStartDate is the time immediately after the user agent received the first byte of the response from the server or from local resources.
+	 *
+	 * For example, this would correspond to the time immediately after the user agent received the first byte of an HTTP response.
+	 */
+	@property (nullable, copy, readonly) NSDate *responseStartDate;
+	```
+
+* `responseEndDate`:客户端从服务器接收到最后一个字节的时间。
+
+	``` objective-c
+	/*
+	 * responseEndDate is the time immediately after the user agent received the last byte of the resource.
+	 */
+	@property (nullable, copy, readonly) NSDate *responseEndDate;
+	```
 
 ## Power consumption
 
@@ -909,31 +1067,31 @@ iOS 设备的电量一直是用户非常关心的问题。如果你的应用由�
 
 * 是否开启电池监控，默认为 `NO`
 
-``` objective-c
-// default is NO             
-@property(nonatomic,getter=isBatteryMonitoringEnabled) BOOL batteryMonitoringEnabled NS_AVAILABLE_IOS(3_0) __TVOS_PROHIBITED;                
-```
+	``` objective-c
+	// default is NO             
+	@property(nonatomic,getter=isBatteryMonitoringEnabled) BOOL batteryMonitoringEnabled NS_AVAILABLE_IOS(3_0) __TVOS_PROHIBITED;                
+	```
 
 * 电池电量，取值 0-1.0，如果 `batteryState` 是 `UIDeviceBatteryStateUnknown`，则电量是 -1.0
 
-``` objective-c
-// 0 .. 1.0. -1.0 if UIDeviceBatteryStateUnknown
-@property(nonatomic,readonly) float batteryLevel NS_AVAILABLE_IOS(3_0) __TVOS_PROHIBITED; 
-```
+	``` objective-c
+	// 0 .. 1.0. -1.0 if UIDeviceBatteryStateUnknown
+	@property(nonatomic,readonly) float batteryLevel NS_AVAILABLE_IOS(3_0) __TVOS_PROHIBITED; 
+	```
 
 * 电池状态，为 `UIDeviceBatteryState` 枚举类型，总共有四种状态
 
-``` objective-c
-// UIDeviceBatteryStateUnknown if monitoring disabled
-@property(nonatomic,readonly) UIDeviceBatteryState batteryState NS_AVAILABLE_IOS(3_0) __TVOS_PROHIBITED;  
-
-typedef NS_ENUM(NSInteger, UIDeviceBatteryState) {
-    UIDeviceBatteryStateUnknown,
-    UIDeviceBatteryStateUnplugged,   // on battery, discharging
-    UIDeviceBatteryStateCharging,    // plugged in, less than 100%
-    UIDeviceBatteryStateFull,        // plugged in, at 100%
-} __TVOS_PROHIBITED;              // available in iPhone 3.0
-```
+	``` objective-c
+	// UIDeviceBatteryStateUnknown if monitoring disabled
+	@property(nonatomic,readonly) UIDeviceBatteryState batteryState NS_AVAILABLE_IOS(3_0) __TVOS_PROHIBITED;  
+	
+	typedef NS_ENUM(NSInteger, UIDeviceBatteryState) {
+	    UIDeviceBatteryStateUnknown,
+	    UIDeviceBatteryStateUnplugged,   // on battery, discharging
+	    UIDeviceBatteryStateCharging,    // plugged in, less than 100%
+	    UIDeviceBatteryStateFull,        // plugged in, at 100%
+	} __TVOS_PROHIBITED;              // available in iPhone 3.0
+	```
 
 获取电量代码
 
@@ -946,8 +1104,7 @@ typedef NS_ENUM(NSInteger, UIDeviceBatteryState) {
      // Level has changed
      NSLog(@"Battery Level Change");
      NSLog(@"电池电量：%.2f", [UIDevice currentDevice].batteryLevel);
- }];
-                             
+ }];                         
 ```
 
 > 使用 `UIDevice` 可以非常方便获取到电量，经测试发现，在 iOS 8.0 之前，`batteryLevel` 只能精确到5%，而在 `iOS` 8.0 之后，精确度可以达到1%，但这种方案获取到的数据不是很精确，没办法应用到生产环境。
