@@ -8,7 +8,7 @@
 
 随着移动互联网向纵深发展，用户越来越关心应用的体验，开发者必须关注应用性能所带来的用户流失问题。据统计，有十种应用性能问题危害最大，分别为：连接超时、闪退、卡顿、崩溃、黑白屏、网络劫持、交互性能差、CPU 使用率问题、内存泄露、不良接口。开发者难以兼顾所有的性能问题，而在传统的开发流程中，我们解决性能问题的方式通常是在得到线上用户的反馈后，再由开发人员去分析引发问题的根源；显然，凭借用户的反馈来得知应用的性能问题这种方式很原始，也很不高效，它使得开发团队在应对应用性能问题上很被动；所以寻找一种更专业和高效的手段来保障应用的性能就变得势在必行。性能监控 SDK 的定位就是帮助开发团队快速精确定位性能问题，进而推动应用的性能和用户体验的提升。
 
-这篇文章是我在开发 iOS 性能监控平台 SDK 过程前期的调研和沉淀。主要会探讨下在 iOS 平台下如何采集性能指标，如 **CPU 占用率、内存使用情况、FPS、冷启动、热启动时间，流量，耗电量**等，剖析每一项指标的具体实现方式，SDK 的实现会有一定的技术难度，这也是我为什么写这篇文章的原因，我希望能够将开发过程中的一些心得和体会记录下来，同时后续我会将实现 SDK 的详细细节开源出来，希望能对读者有所帮助。
+这篇文章是我在开发 iOS 性能监控平台 SDK 过程前期的调研和沉淀。主要会探讨下在 iOS 平台下如何采集性能指标，如 **CPU 占用率、内存使用情况、FPS、冷启动、热启动时间，网络，耗电量**等，剖析每一项指标的具体实现方式，SDK 的实现会有一定的技术难度，这也是我为什么写这篇文章的原因，我希望能够将开发过程中的一些心得和体会记录下来，同时后续我会将实现 SDK 的详细细节开源出来，希望能对读者有所帮助。
 
 ## CPU
 
@@ -18,7 +18,7 @@
 
 如果想避免出现上述情况，可以通过监控应用的 **CPU** 占用率，在 iOS 中如何实现 **CPU** 占用率的监控呢？事实上，学习过操作系统课程都了解线程是调度和分配的基本单位，而应用作为进程运行时，包含了多个不同的线程，显然如果我们能获取应用的所有线程占用 **CPU** 的情况，也就能知道应用的 **CPU** 占用率。
 
-> iOS 是基于Apple Darwin 内核，由 kernel、XNU 和 runtime 组成，XNU 是 Darwin 的内核，它是“X is not UNIX”的缩写，它是一个混合内核，由 Mach 微内核和 BSD 组成。Mach 内核是轻量级的平台，只能完成操作系统最基本的职责，比如：进程和线程、虚拟内存管理、任务调度、进程通信和消息传递机制。其他的工作，例如文件操作和设备访问，都由 BSD 层实现。
+> iOS 是基于Apple Darwin 内核，由 kernel、XNU 和 Runtime 组成，XNU 是 Darwin 的内核，它是“X is not UNIX”的缩写，它是一个混合内核，由 Mach 微内核和 BSD 组成。Mach 内核是轻量级的平台，只能完成操作系统最基本的职责，比如：进程和线程、虚拟内存管理、任务调度、进程通信和消息传递机制。其他的工作，例如文件操作和设备访问，都由 BSD 层实现。
 
 <p align="center">
 
@@ -26,7 +26,7 @@
 
 </p>
 
-上图是权威著作《OS X Internal: A System Approach》给出的 Mac OS X 中进程子系统组成的概念视图，与 Mac OS X 类似， iOS 的线程技术也是基于 **Mach** 线程技术实现的，在 **Mach** 层中 `thread_basic_info` 结构体提供了线程的基本信息。
+上图是权威著作《OS X Internal: A System Approach》给出的 Mac OS X 中进程子系统组成的概念图，与 Mac OS X 类似， iOS 的线程技术也是基于 **Mach** 线程技术实现的，在 **Mach** 层中 `thread_basic_info` 结构体提供了线程的基本信息。
 
 ``` c
 struct thread_basic_info {
@@ -140,7 +140,7 @@ float cpu_usage()
 }
 ```
 
-在调用 `task_threads` API 是传入的 `mach_task_self()`参数，表示获取当前的 Mach task，`flavor` 参数传的是 `THREAD_BASIC_INFO `，使用这个类型会返回线程的基本信息，定义在 `thread_basic_info_t` 结构体，包含了用户和系统的运行时间，运行状态和调度优先级。
+在调用 `task_threads` API 时，`target_task ` 参数传入的是 `mach_task_self()`，表示获取当前的 Mach task。而在调用 `thread_info` API 时，`flavor` 参数传的是 `THREAD_BASIC_INFO `，使用这个类型会返回线程的基本信息，定义在 `thread_basic_info_t` 结构体，包含了用户和系统的运行时间，运行状态和调度优先级。
 
 注意方法最后要调用 `vm_deallocate`，防止出现内存泄漏。据测试，该方法采集的 **CPU** 数据和腾讯的 [GT](https://github.com/Tencent/GT)、**Instruments** 数据接近。
 
@@ -259,7 +259,7 @@ kern_return_t task_info
 }
 
 ```
-与获取 **CPU** 占用率类似，在调用 `task_info` 时，`target_task` 传入的 `mach_task_self()`参数，表示获取当前的 Mach task，另外 `flavor` 传的是 `MACH_TASK_BASIC_INFO`，使用这个类型会返回 `mach_task_basic_info` 结构体，表示返回 `target_task` 的基本信息，比如 task 的挂起次数和驻留页面数量。
+与获取 **CPU** 占用率类似，在调用 `task_info` API 时，`target_task` 参数传入的是 `mach_task_self()`，表示获取当前的 Mach task，另外 `flavor` 参数传的是 `MACH_TASK_BASIC_INFO`，使用这个类型会返回 `mach_task_basic_info` 结构体，表示返回 `target_task` 的基本信息，比如 task 的挂起次数和驻留页面数量。
 
 如果想获取设备所有物理内存大小可以通过 `NSProcessInfo`。
 
@@ -534,9 +534,9 @@ NSString *report = [PLCrashReportTextFormatter stringValueForCrashReport:reporte
                                                           withTextFormat:PLCrashReportTextFormatiOS];                                                
 ```
 
-## Traffic
+## Network
 
-流量监控一般通过 `NSURLProtocol` 和 `CFNetwork` 这两种方式来实现，由于 `NSURLProtocol` 作为上层接口，使用起来更为方便，因此大部分 SDK 都选择它来实现流量监控，但是 `NSURLProtocol` 属于 **URL Loading System** 体系中，应用层的协议支持有限，只支持 **FTP**，**HTTP**，**HTTPS** 等几个应用层协议，对于使用其他协议的流量则束手无策，所以存在一定的局限性。监控底层网络库 `CFNetwork` 则没有这个限制，有些人可能会问为什么不用更加底层的 **BSD Socket**，那样不是可以得到更多的控制吗？不使用 **BSD Socket** 理由是 **BSD Socket** 既不走系统中的 VPN 通道，也没相关的 API 来自动激活已经关闭掉的 Wi-Fi 或蜂窝无线设备，另外有人反应使用 **Fishhook** 没办法 hook **BSD Socket**，所以更倾向使用 `CFNetwork` 实现流量监控。
+网络监控一般通过 `NSURLProtocol` 和代码注入（Hook）这两种方式来实现，由于 `NSURLProtocol` 作为上层接口，使用起来更为方便，因此大部分 SDK 都选择它来实现流量监控，但是 `NSURLProtocol` 属于 **URL Loading System** 体系中，应用层的协议支持有限，只支持 **FTP**，**HTTP**，**HTTPS** 等几个应用层协议，对于使用其他协议的流量则束手无策，所以存在一定的局限性。监控底层网络库 `CFNetwork` 则没有这个限制，有些人可能会问为什么不用更加底层的 **BSD Socket**，那样不是可以得到更多的控制吗？不使用 **BSD Socket** 理由是 **BSD Socket** 既不走系统中的 VPN 通道，也没相关的 API 来自动激活已经关闭掉的 Wi-Fi 或蜂窝无线设备，另外有人反应使用 **Fishhook** 没办法 hook **BSD Socket**。
 
 ### NSURLProtocol
 
@@ -714,6 +714,39 @@ didReceiveResponse:(NSURLResponse *)response {
     return YES;
 }                                                     
 ```
+
+### Hook
+
+如果我们使用手工埋点的方式来监控网络，会侵入到业务代码，维护成本会非常高。通过 Hook 将网络性能监控的代码自动注入就可以避免上面的问题，做到真实用户体验监控（RUM: Real User Monitoring），监控应用在真实网络环境中的性能。
+
+> **AOP**(Aspect Oriented Programming，面向切面编程)，通过预编译方式和运行期动态代理实现在不修改源代码的情况下给程序动态添加功能的一种技术。其核心思想是将业务逻辑（核心关注点，系统的主要功能）与公共功能（横切关注点，如日志、事物等）进行分离，降低复杂性，提高软件系统模块化、可维护性和可重用性。其中核心关注点采用 **OOP** 方式进行代码的编写，横切关注点采用 **AOP** 方式进行编码，最后将这两种代码进行组合形成系统。**AOP** 被应用在日志记录，性能统计，安全控制，事务处理，异常处理等领域。
+
+在 iOS 中 **AOP** 的实现是基于 **Objective-C** 的 **Runtime** 机制，实现 Hook 的三种方式分别为：**Method Swizzling**、**NSProxy** 和 **Fishhook**。前两者适用于 **Objective-C** 实现的库，如 `NSURLConnection` 和 `NSURLSession` ，**Fishhook** 则适用于 **C** 语言实现的库，如 `CFNetwork`。
+
+下图是阿里百川码力监控给出的三类网络接口需要 hook 的方法
+
+<p align="center">
+
+<img src="Images/network_monitor.jpeg">
+
+</p>
+
+
+接下来分别来讨论这三种实现方式：
+
+#### Method Swizzling
+
+**Method swizzling** 是利用 **Objective-C** **Runtime** 特性把一个方法的实现与另一个方法的实现进行替换的技术。每个 Class 结构体中都有一个 `Dispatch Table` 的成员变量，`Dispatch Table` 中建立了每个 `SEL`（方法名）和对应的 `IMP`（方法实现，指向 **C** 函数的指针）的映射关系，**Method Swizzling** 就是将原有的 `SEL` 和 `IMP`映射关系打破，并建立新的关联来达到方法替换的目的。
+
+<p align="center">
+
+<img src="Images/method_swizzling.png">
+
+</p>
+
+因此利用 **Method swizzling** 可以替换原始实现，在替换的实现中加入网络性能埋点行为，然后调用原始实现。
+
+#### NSProxy
 
 ### CFNetwork
 
@@ -940,6 +973,8 @@ SELECT datetime(timestamp, 'unixepoch') AS TIME, BLMAppName FROM PLBLMAccounting
 ```       
 
 > 发现 `iOSDiagnosticsSupport` Framework 在 iOS 10 之后名字已经被改成 `DiagnosticsSupport`，而且 `MBSDevice` 类也被隐藏了。
+
+## 维度
 
 ## Author
 
