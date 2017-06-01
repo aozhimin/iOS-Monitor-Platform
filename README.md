@@ -748,6 +748,41 @@ didReceiveResponse:(NSURLResponse *)response {
 
 #### NSProxy
 
+> NSProxy is an abstract superclass defining an API for objects that act as stand-ins for other objects or for objects that don’t exist yet. Typically, a message to a proxy is forwarded to the real object or causes the proxy to load (or transform itself into) the real object. Subclasses of NSProxy can be used to implement transparent distributed messaging (for example, NSDistantObject) or for lazy instantiation of objects that are expensive to create.
+
+这是 Apple 官方文档给的 `NSProxy` 的定义，`NSProxy` 和 `NSObject` 一样都是根类，它是一个抽象类，你可以通过继承它，并重写 `-forwardInvocation:` 和 `-methodSignatureForSelector:` 方法以实现消息转发到另一个实例。综上，`NSProxy` 的目的就是负责将消息转发到真正的 target 的代理类。
+
+**Method swizzling** 替换方法需要指定类名，但是 `NSURLConnectionDelegate` 和 `NSURLSessionDelegate` 是由业务方指定，通常来说是不确定，所以这种场景不适合使用 **Method swizzling**。使用 `NSProxy` 可以解决上面的问题，具体实现：proxy delegate 替换 `NSURLConnection` 和 `NSURLSession` 原来的 delegate，如果当 proxy delegate 收到回调时，如果是要 hook 的方法，则调用 proxy 的实现，proxy 的实现最后会调用原来的 delegate；如果不是要 hook 的方法，则通过消息转发机制将消息转发给原来的 delegate。下图示意了整个操作流程。
+
+<p align="center">
+
+<img src="Images/proxy.jpeg">
+
+</p>
+
+#### Fishhook
+
+fishhook 是一个由 Facebook 开源的第三方框架，其主要作用就是动态修改 C 语言函数实现，我们可以使用 fishhook 来替换动态链接库中的 **C** 函数实现，具体来说就是 `CFNetwork` 和 `CoreFoundation` 中的相关函数。后面会在讲监控 `CFNetwork` 详细说明，这里不再追说。
+
+讲完了 iOS 上 hook 实现技术，接下来分别看下将上文三种应用在 `NSURLConnection`、`NSURLSession` 和 `CFNetwork` 中的实践。
+
+### NSURLConnection
+
+<p align="center">
+
+<img src="Images/urlconnection.jpeg">
+
+</p>
+
+
+### NSURLSession
+
+<p align="center">
+
+<img src="Images/urlsession.jpeg">
+
+</p>
+
 ### CFNetwork
 
 #### 概述
@@ -1004,4 +1039,5 @@ Email: aozhimin0811@gmail.com
 * [网易 NeteaseAPM iOS SDK 技术实现分享](http://www.infoq.com/cn/articles/netease-ios-sdk-neteaseapm-technology-share)
 * [Mobile Application Monitor IOS组件设计技术分享](http://bbs.netease.im/read-tid-149)
 * [iOS-Diagnostics](https://github.com/lyonanderson/iOS-Diagnostics)
+* [性能可视化实践之路](http://www.doc88.com/p-3072311816896.html)
 
