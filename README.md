@@ -641,80 +641,6 @@ didReceiveResponse:(NSURLResponse *)response {
 
 > **Hertz** 使用的是 `NSURLProtocol` 这种方式，通过继承 `NSURLProtocol`，实现 `NSURLConnectionDelegate` 来实现截取行为。
 
-**URL Loading System** 允许加载多个 `NSURLProtocol`，将他们存放在一个数组中，而 **AFNetworking** 只会使用这个数组中的第一个 `protocol`，可以通过 **Method Swizzling** 来解决这个问题，代码如下：
-
-``` objective-c
-#import <Foundation/Foundation.h>
-#import "MySessionConfiguration.h"
-#import "MyHttpProtocol.h"
-#import <objc/runtime.h>
-
-@implementation MySessionConfiguration
-
-//默认的单例
-+ (MySessionConfiguration *)defaultConfiguration {
-    static MySessionConfiguration *staticConfiguration;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        staticConfiguration =[[MySessionConfiguration alloc] init];
-    });
-    return staticConfiguration;
-}
-
-
-- (instancetype)init {
-    self = [super init];
-    if(self){
-        self.isSwizzle=NO;
-    }
-    return self;
-}
-
-//load被调用的时候，其实吧session.configuration.protocolClasses 这个数组从原有配置换成了只有MyHttpProtocol
-- (void)load {
-    NSLog(@"----configuration load --");
-    self.isSwizzle=YES;
-    Class cls = NSClassFromString(@"__NSCFURLSessionConfiguration") ?:NSClassFromString(@"NSURLSessionConfiguration");
-    [self swizzleSelector:@selector(protocolClasses) fromClass:cls toClass:[self class]];
-
-}
-
-- (void)unload {
-    self.isSwizzle=NO;
-     Class cls = NSClassFromString(@"__NSCFURLSessionConfiguration") ?:NSClassFromString(@"NSURLSessionConfiguration");
-     [self swizzleSelector:@selector(protocolClasses) fromClass:cls toClass:[self class]];
-}
-
-- (void)swizzleSelector:(SEL)selector fromClass:(Class)original toClass:(Class)stub {
-    Method originalMethod = class_getInstanceMethod(original, selector);
-    Method stubMethod = class_getInstanceMethod(stub, selector);
-    if(!originalMethod || !stubMethod){
-        [NSException raise:NSInternalInconsistencyException format:@"Could't load NSURLSessionConfiguration "];
-    }
-
-   //真正的替换在这里
-    method_exchangeImplementations(originalMethod, stubMethod);
-}
-
- //返回MyHttpProtocol
-- (NSArray *)protocolClasses {
-    return @[[MyHttpProtocol class]];
-}
-
-@end                                               
-```
-
-然后在应用启动时候加载
-
-``` objective-c
-- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
-
-   [[[MySessionConfiguration alloc] init] load];
-
-    return YES;
-}                                                     
-```
-
 ### Hook
 
 如果我们使用手工埋点的方式来监控网络，会侵入到业务代码，维护成本会非常高。通过 Hook 将网络性能监控的代码自动注入就可以避免上面的问题，做到真实用户体验监控（RUM: Real User Monitoring），监控应用在真实网络环境中的性能。
@@ -890,7 +816,7 @@ rebind_symbols((struct rebinding[1]){{"CFReadStreamCreateForHTTPRequest", XX_CFR
 
 ## Power consumption
 
-iOS 设备的电量一直是用户非常关心的问题。如果你的应用由于某些缺陷不幸成为电量杀手，用户会毫不犹豫的卸载你的应用，所以耗电也是 App 性能的重要衡量标准之一。 
+iOS 设备的电量一直是用户非常关心的问题。如果你的应用由于某些缺陷不幸成为电量杀手，用户会毫不犹豫的卸载你的应用，所以耗电也是 App 性能的重要衡量标准之一。然而事实上业内对耗电量的监控的方案都做的不太好，下面会介绍和对比业内已有的耗电量的监控方案
 
 电量获取三种方案对比如下：
 
