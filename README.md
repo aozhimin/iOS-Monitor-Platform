@@ -536,12 +536,23 @@ NSString *report = [PLCrashReportTextFormatter stringValueForCrashReport:reporte
 
 ## Network
 
+国内移动网络环境极为复杂，WIFI、4G、3G、2.5G(Edge)、2G 等多种移动网络并存，用户的网络可能会在 WIFI/4G/3G/2.5G/2G 类型中切换，这是移动网络和传统网络一个很大的区别，被称作是 Connection Migration 问题。此外，国内运营商网络的 DNS 解析慢、失败率高、DNS 别劫持的问题；还有国内运营商互联和海外访问国内带宽低传输慢等问题。这些网络问题令人非常头疼。移动网络的现状造成了用户在使用过程中经常会遇到各种网络问题，网络问题将直接导致用户无法在 App 进行操作，当一些关键的业务接口出现错误时，甚至会直接导致用户的大量流失。以往要解决这些问题，只能靠经验和猜想，而如果能站在 App 的视角对网络进行监控，就能更有针对性地了解产生问题的根源。
+
 网络监控一般通过 `NSURLProtocol` 和代码注入（Hook）这两种方式来实现，由于 `NSURLProtocol` 作为上层接口，使用起来更为方便，因此大部分 SDK 都选择它来实现流量监控，但是 `NSURLProtocol` 属于 **URL Loading System** 体系中，应用层的协议支持有限，只支持 **FTP**，**HTTP**，**HTTPS** 等几个应用层协议，对于使用其他协议的流量则束手无策，所以存在一定的局限性。监控底层网络库 `CFNetwork` 则没有这个限制，有些人可能会问为什么不用更加底层的 **BSD Socket**，那样不是可以得到更多的控制吗？不使用 **BSD Socket** 理由是 **BSD Socket** 既不走系统中的 VPN 通道，也没相关的 API 来自动激活已经关闭掉的 Wi-Fi 或蜂窝无线设备，另外有人反应使用 **Fishhook** 没办法 hook **BSD Socket**。
+
+下面是网络数据采集的主要关键性能指标：
+
+* TCP 建立连接时间
+* DNS 时间
+* SSL 时间
+* 首包时间
+* 响应时间
+* HTTP 错误率
+* 网络错误率
 
 ### NSURLProtocol
 
 ``` objective-c
-
 //MyHttpProtocol.m
 
 #import <Foundation/Foundation.h>
@@ -634,9 +645,7 @@ didReceiveResponse:(NSURLResponse *)response {
 
 - (void)connectionDidFinishLoading:(NSURLConnection *)connection {
     [[self client] URLProtocolDidFinishLoading:self];
-}
-
-                                                          
+}                                                         
 ```
 
 > **Hertz** 使用的是 `NSURLProtocol` 这种方式，通过继承 `NSURLProtocol`，实现 `NSURLConnectionDelegate` 来实现截取行为。
@@ -936,6 +945,7 @@ SELECT datetime(timestamp, 'unixepoch') AS TIME, BLMAppName FROM PLBLMAccounting
 > 发现 `iOSDiagnosticsSupport` Framework 在 iOS 10 之后名字已经被改成 `DiagnosticsSupport`，而且 `MBSDevice` 类也被隐藏了。
 
 ## 维度
+
 
 ## Author
 
