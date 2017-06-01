@@ -676,7 +676,7 @@ didReceiveResponse:(NSURLResponse *)response {
 
 这是 Apple 官方文档给 `NSProxy` 的定义，`NSProxy` 和 `NSObject` 一样都是根类，它是一个抽象类，你可以通过继承它，并重写 `-forwardInvocation:` 和 `-methodSignatureForSelector:` 方法以实现消息转发到另一个实例。综上，`NSProxy` 的目的就是负责将消息转发到真正的 target 的代理类。
 
-**Method swizzling** 替换方法需要指定类名，但是 `NSURLConnectionDelegate` 和 `NSURLSessionDelegate` 是由业务方指定，通常来说是不确定，所以这种场景不适合使用 **Method swizzling**。使用 `NSProxy` 可以解决上面的问题，具体实现：proxy delegate 替换 `NSURLConnection` 和 `NSURLSession` 原来的 delegate，如果当 proxy delegate 收到回调时，如果是要 hook 的方法，则调用 proxy 的实现，proxy 的实现最后会调用原来的 delegate；如果不是要 hook 的方法，则通过消息转发机制将消息转发给原来的 delegate。下图示意了整个操作流程。
+**Method swizzling** 替换方法需要指定类名，但是 `NSURLConnectionDelegate` 和 `NSURLSessionDelegate` 是由业务方指定，通常来说是不确定，所以这种场景不适合使用 **Method swizzling**。使用 `NSProxy` 可以解决上面的问题，具体实现：proxy delegate 替换 `NSURLConnection` 和 `NSURLSession` 原来的 delegate，当 proxy delegate 收到回调时，如果是要 hook 的方法，则调用 proxy 的实现，proxy 的实现最后会调用原来的 delegate；如果不是要 hook 的方法，则通过消息转发机制将消息转发给原来的 delegate。下图示意了整个操作流程。
 
 <p align="center">
 
@@ -686,9 +686,9 @@ didReceiveResponse:(NSURLResponse *)response {
 
 #### Fishhook
 
-fishhook 是一个由 Facebook 开源的第三方框架，其主要作用就是动态修改 C 语言函数实现，我们可以使用 fishhook 来替换动态链接库中的 **C** 函数实现，具体来说就是 `CFNetwork` 和 `CoreFoundation` 中的相关函数。后面会在讲监控 `CFNetwork` 详细说明，这里不再追说。
+fishhook 是一个由 Facebook 开源的第三方框架，其主要作用就是动态修改 **C** 语言的函数实现，我们可以使用 fishhook 来替换动态链接库中的 **C** 函数实现，具体来说就是去替换 `CFNetwork` 和 `CoreFoundation` 中的相关函数。后面会在讲监控 `CFNetwork` 详细说明，这里不再赘述。
 
-讲完了 iOS 上 hook 实现技术，接下来分别看下将上文三种应用在 `NSURLConnection`、`NSURLSession` 和 `CFNetwork` 中的实践。
+讲解完 iOS 上 hook 的实现技术，接下来讨论在 `NSURLConnection`、`NSURLSession` 和 `CFNetwork` 中，如何将上面的三种技术应用到实践中。
 
 ### NSURLConnection
 
@@ -711,7 +711,7 @@ fishhook 是一个由 Facebook 开源的第三方框架，其主要作用就是�
 
 #### 概述
 
-以 **NeteaseAPM** 作为案例来讲解如何通过 `CFNetwork` 实现网络监控，它是通过使用代理模式来实现的，在 `CoreFoundation` Framework 的 `CFStream` 实现一个 Proxy Stream 从而达到拦截的目的，记录通过 `CFStream` 读取的网络数据长度，然后再转发给 Original Stream，流程图如下：
+以 **NeteaseAPM** 作为案例来讲解如何通过 `CFNetwork` 实现网络监控，它是通过使用代理模式来实现的，具体来说，是在 `CoreFoundation` Framework 的 `CFStream` 实现一个 Proxy Stream 从而达到拦截的目的，记录通过 `CFStream` 读取的网络数据长度，然后再转发给 Original Stream，流程图如下：
 
 <p align="center">
 
@@ -810,9 +810,53 @@ rebind_symbols((struct rebinding[1]){{"CFReadStreamCreateForHTTPRequest", XX_CFR
 
 </p>
 
-### NSURLSessionTaskMetrics
+### NSURLSessionTaskMetrics/NSURLSessionTaskTransactionMetrics
 
-Apple 在 iOS 10 的 `NSURLSessionTaskDelegate` 代理中新增了 `-URLSession: task:didFinishCollectingMetrics:` 方法，如果实现这个代理方法，就可以通过该回调的 `NSURLSessionTaskMetrics` 类型参数获取到采集到网络指标。
+Apple 在 iOS 10 的 `NSURLSessionTaskDelegate` 代理中新增了 `-URLSession: task:didFinishCollectingMetrics:` 方法，如果实现这个代理方法，就可以通过该回调的 `NSURLSessionTaskMetrics` 类型参数获取到采集到网络指标，实现对网络请求中 DNS 查询/TCP 建立连接/TLS 握手/请求响应等各环节时间上的统计。
+
+``` objective-c
+/*
+ * Sent when complete statistics information has been collected for the task.
+ */
+- (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didFinishCollectingMetrics:(NSURLSessionTaskMetrics *)metrics API_AVAILABLE(macosx(10.12), ios(10.0), watchos(3.0), tvos(10.0));
+```
+
+#### NSURLSessionTaskMetrics
+
+`NSURLSessionTaskMetrics` 对象封装了 session task 的指标，每个 `NSURLSessionTaskMetrics` 对象有 `taskInterval` 和 `redirectCount` 属性，还有在执行任务时产生的每个请求/响应事务中收集的指标。
+
+* `transactionMetrics`:`transactionMetrics` 数组包含了在执行任务时产生的每个请求/响应事务中收集的指标。
+
+``` objective-c
+/*
+ * transactionMetrics array contains the metrics collected for every request/response transaction created during the task execution.
+ */
+@property (copy, readonly) NSArray<NSURLSessionTaskTransactionMetrics *> *transactionMetrics;
+```
+
+* `taskInterval`:任务从创建到完成花费的总时间，任务的创建时间是任务被实例化时的时间；任务完成时间是任务的内部状态将要变为完成的时间。
+
+``` objective-c
+/*
+ * Interval from the task creation time to the task completion time.
+ * Task creation time is the time when the task was instantiated.
+ * Task completion time is the time when the task is about to change its internal state to completed.
+ */
+@property (copy, readonly) NSDateInterval *taskInterval;
+```
+
+* `redirectCount`:记录了被重定向的次数。
+
+``` objective-c
+/*
+ * redirectCount is the number of redirects that were recorded.
+ */
+@property (assign, readonly) NSUInteger redirectCount;
+```
+
+### NSURLSessionTaskTransactionMetrics
+
+`NSURLSessionTaskTransactionMetrics` 对象封装了任务执行时收集的性能指标，
 
 <p align="center">
 
@@ -820,12 +864,28 @@ Apple 在 iOS 10 的 `NSURLSessionTaskDelegate` 代理中新增了 `-URLSession:
 
 </p>
 
+* `request`:表示了网络请求对象。
 
 ``` objective-c
 /*
- * Sent when complete statistics information has been collected for the task.
+ * Represents the transaction request.
  */
-- (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didFinishCollectingMetrics:(NSURLSessionTaskMetrics *)metrics API_AVAILABLE(macosx(10.12), ios(10.0), watchos(3.0), tvos(10.0));
+@property (copy, readonly) NSURLRequest *request;
+```
+
+* `response`:表示了网络响应对象，如果网络出错或没有响应时，`response` 为 `nil`。
+
+``` objective-c
+/*
+ * Represents the transaction response. Can be nil if error occurred and no response was generated.
+ */
+@property (nullable, copy, readonly) NSURLResponse *response;
+```
+
+* `networkProtocolName`:表示了网络响应对象，如果网络出错或没有响应时，`response` 为 `nil`。
+
+``` objective-c
+@property (nullable, copy, readonly) NSString *networkProtocolName;
 ```
 
 
