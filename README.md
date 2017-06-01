@@ -6,19 +6,19 @@
 
 ## 为什么写这篇文章？
 
-随着移动互联网向纵深发展，用户越来越关心应用的体验，开发者必须关注应用性能所带来的用户流失问题。据统计，有十种应用性能问题危害最大，分别为：连接超时、闪退、卡顿、崩溃、黑白屏、网络劫持、交互性能差、CPU 使用率问题、内存泄露、不良接口。开发者难以兼顾所有的性能问题，而在传统的开发流程中，我们解决性能问题的方式通常是在得到线上用户的反馈后，再由开发人员去分析引发问题的根源；显然，凭借用户的反馈来得知应用的性能问题这种方式很原始，也很不高效，它使得开发团队在应对应用性能问题上很被动；所以寻找一种更专业和高效的手段来保障应用的性能就变得势在必行。性能监控 SDK 的定位就是帮助开发团队快速精确定位性能问题，进而推动应用的性能和用户体验的提升。
+随着移动互联网向纵深发展，用户变得越来越关心应用的体验，开发者必须关注应用性能所带来的用户流失问题。据统计，有十种应用性能问题危害最大，分别为：连接超时、闪退、卡顿、崩溃、黑白屏、网络劫持、交互性能差、CPU 使用率问题、内存泄露、不良接口。开发者难以兼顾所有的性能问题，而在传统的开发流程中，我们解决性能问题的方式通常是在得到线上用户的反馈后，再由开发人员去分析引发问题的根源；显然，凭借用户的反馈来得知应用的性能问题这种方式很原始，也很不高效，它使得开发团队在应对应用性能问题上很被动；所以寻找一种更专业和高效的手段来保障应用的性能就变得势在必行。性能监控 SDK 的定位就是帮助开发团队快速精确地定位性能问题，进而推动应用的性能和用户体验的提升。
 
-这篇文章是我在开发 iOS 性能监控平台 SDK 过程前期的调研和沉淀。主要会探讨下在 iOS 平台下如何采集性能指标，如 **CPU 占用率、内存使用情况、FPS、冷启动、热启动时间，网络，耗电量**等，剖析每一项指标的具体实现方式，SDK 的实现会有一定的技术难度，这也是我为什么写这篇文章的原因，我希望能够将开发过程中的一些心得和体会记录下来，同时后续我会将实现 SDK 的详细细节开源出来，希望能对读者有所帮助。
+这篇文章是我在开发 iOS 性能监控平台 SDK 过程前期的调研和沉淀。主要会探讨在 iOS 平台下如何采集性能指标，如 **CPU 占用率、内存使用情况、FPS、冷启动、热启动时间，网络，耗电量**等，剖析每一项性能指标的具体实现方式，SDK 的实现会有一定的技术难度，这也是我为什么写这篇文章的原因，我希望能够将开发过程中的一些心得和体会记录下来，同时后续我会将实现 SDK 的详细细节开源出来，希望能对读者有所帮助。
 
 ## CPU
 
 > A CPU chip is designed for portable computers, it is typically housed in a smaller chip package, but more importantly, in order to run cooler, it uses lower voltages than its desktop counterpart and has more "sleep mode" capability. A mobile processor can be throttled down to different power levels or sections of the chip can be turned off entirely when not in use. Further, the clock frequency may be stepped down under low processor loads. This stepping down conserves power and prolongs battery life.
 
-**CPU** 是移动设备最重要的计算资源，设计糟糕的应用可能会造成 **CPU** 持续以高负载运行，一方面会导致用户使用过程遭遇卡顿；另一方面也会导致手机发热发烫，电量被快速消耗完；严重影响用户体验。
+**CPU** 是移动设备最重要的计算资源，设计糟糕的应用可能会造成 **CPU** 持续以高负载运行，一方面会导致用户使用过程遭遇卡顿；另一方面也会导致手机发热发烫，电量被快速消耗完，严重影响用户体验。
 
-如果想避免出现上述情况，可以通过监控应用的 **CPU** 占用率，在 iOS 中如何实现 **CPU** 占用率的监控呢？事实上，学习过操作系统课程都了解线程是调度和分配的基本单位，而应用作为进程运行时，包含了多个不同的线程，显然如果我们能获取应用的所有线程占用 **CPU** 的情况，也就能知道应用的 **CPU** 占用率。
+如果想避免出现上述情况，可以通过监控应用的 **CPU** 占用率，那么在 iOS 中如何实现 **CPU** 占用率的监控呢？事实上，学习过操作系统课程的读者都了解线程是调度和分配的基本单位，而应用作为进程运行时，包含了多个不同的线程，显然如果我们能获取应用的所有线程占用 **CPU** 的情况，也就能知道应用的 **CPU** 占用率。
 
-> iOS 是基于Apple Darwin 内核，由 kernel、XNU 和 Runtime 组成，XNU 是 Darwin 的内核，它是“X is not UNIX”的缩写，它是一个混合内核，由 Mach 微内核和 BSD 组成。Mach 内核是轻量级的平台，只能完成操作系统最基本的职责，比如：进程和线程、虚拟内存管理、任务调度、进程通信和消息传递机制。其他的工作，例如文件操作和设备访问，都由 BSD 层实现。
+> iOS 是基于 Apple Darwin 内核，由 kernel、XNU 和 Runtime 组成，而 XNU 是 Darwin 的内核，它是“X is not UNIX”的缩写，是一个混合内核，由 Mach 微内核和 BSD 组成。Mach 内核是轻量级的平台，只能完成操作系统最基本的职责，比如：进程和线程、虚拟内存管理、任务调度、进程通信和消息传递机制。其他的工作，例如文件操作和设备访问，都由 BSD 层实现。
 
 <p align="center">
 
@@ -26,7 +26,7 @@
 
 </p>
 
-上图是权威著作《OS X Internal: A System Approach》给出的 Mac OS X 中进程子系统组成的概念图，与 Mac OS X 类似， iOS 的线程技术也是基于 **Mach** 线程技术实现的，在 **Mach** 层中 `thread_basic_info` 结构体提供了线程的基本信息。
+上图是权威著作《OS X Internal: A System Approach》给出的 Mac OS X 中进程子系统组成的概念图，与 Mac OS X 类似，iOS 的线程技术也是基于 **Mach** 线程技术实现的，在 **Mach** 层中 `thread_basic_info` 结构体提供了线程的基本信息。
 
 ``` c
 struct thread_basic_info {
@@ -40,10 +40,9 @@ struct thread_basic_info {
         integer_t       sleep_time;     /* number of seconds that thread
                                            has been sleeping */
 };
-
 ```
 
-> 任务（task）是一种容器（container）对象，虚拟内存空间和其他资源都是通过这个容器对象管理的，这些资源包括设备和其他句柄。严格地说，Mach 的任务并不是其他操作系统中所谓的进程，因为 Mach 作为一个微内核的操作系统，并没有提供“进程”的逻辑，而只是提供了最基本的实现。不过在 BSD 的模型中，这两个概念有1：1的简单映射，每一个 BSD 进程（也就是 OS X 进程）都在底层关联了一个 Mach 任务对象。
+> 任务（task）是一种容器（container）对象，虚拟内存空间和其他资源都是通过这个容器对象管理的，这些资源包括设备和其他句柄。严格地说，**Mach** 的任务并不是其他操作系统中所谓的进程，因为 **Mach** 作为一个微内核的操作系统，并没有提供“进程”的逻辑，而只是提供了最基本的实现。不过在 BSD 的模型中，这两个概念有1：1的简单映射，每一个 BSD 进程（也就是 OS X 进程）都在底层关联了一个 Mach 任务对象。
 
 上面引用的是《OS X and iOS Kernel Programming》对 Mach task 的描述，Mach task 可以看作一个机器无关的 thread 执行环境的抽象
 一个 task 包含它的线程列表。内核提供了 `task_threads` API 调用获取指定 task 的线程列表，然后可以通过 `thread_info ` API 调用来查询指定线程的信息，`thread_info ` API 在 `thread_act.h` 中定义。
@@ -69,7 +68,6 @@ kern_return_t thread_info
 );
 ```
 `thread_info` 查询 `flavor` 指定的 thread 信息，将信息返回到长度为 `thread_info_outCnt` 字节的 `thread_info_out` 缓存区中，
-
 
 有了上面的铺垫后，得到获取当前应用的 **CPU** 占用率的实现如下：
 
@@ -186,12 +184,11 @@ float cpu_usage()
     
     return cpu_usage;
 }
-
 ```
 
 ## Memory
 
-> 物理内存（**RAM**）与 **CPU** 一样都是系统中最稀少的资源，也是最有可能产生竞争的资源，应用内存与性能直接相关 - 通常是以牺牲别的应用为代价。 iOS 中不像 PC 端，它没有交换空间作为备选资源，这就使得内存资源尤为重要。事实上，在 iOS 中就有 **Jetsam** 机制负责处理系统低 **RAM** 事件，**Jetsam** 是一种类似 Linux 的 Out-Of-Memory(Killer) 的机制。
+> 物理内存（**RAM**）与 **CPU** 一样都是系统中最稀少的资源，也是最有可能产生竞争的资源，应用内存与性能直接相关 - 通常是以牺牲别的应用为代价。 不像 PC 端，iOS 没有交换空间作为备选资源，这就使得内存资源尤为重要。事实上，在 iOS 中就有 **Jetsam** 机制负责处理系统低 **RAM** 事件，**Jetsam** 是一种类似 Linux 的 Out-Of-Memory(Killer) 的机制。
 
 `mach_task_basic_info` 结构体存储了 Mach task 的内存使用信息，其中 `resident_size` 就是应用使用的物理内存大小，`virtual_size` 是虚拟内存大小。
 
@@ -210,7 +207,7 @@ struct mach_task_basic_info {
 };
 ```
 
-这里需要提到的是有些文章使用的 `task_basic_info` 结构体，而不是上文的 `mach_task_basic_info`，需要注意的是 Apple 已经不建议使用 `task_basic_info` 结构体了。
+这里需要提到的是有些文章使用的 `task_basic_info` 结构体，而不是上文的 `mach_task_basic_info`，值得注意的是 Apple 已经不建议再使用 `task_basic_info` 结构体了。
 
 ``` c
 /* localized structure - cannot be safely passed between tasks of differing sizes */
@@ -257,7 +254,6 @@ kern_return_t task_info
 		return -1;
 	}
 }
-
 ```
 与获取 **CPU** 占用率类似，在调用 `task_info` API 时，`target_task` 参数传入的是 `mach_task_self()`，表示获取当前的 Mach task，另外 `flavor` 参数传的是 `MACH_TASK_BASIC_INFO`，使用这个类型会返回 `mach_task_basic_info` 结构体，表示返回 `target_task` 的基本信息，比如 task 的挂起次数和驻留页面数量。
 
@@ -297,7 +293,6 @@ int64_t getUsedMemory()
 	int activeMem = vmstat.active_count * pagesize;
     return wireMem + activeMem;
 }
-
 ```
 
 ## Startup Time
@@ -340,8 +335,6 @@ extern CFAbsoluteTime StartTime;
 dispatch_async(dispatch_get_main_queue(), ^{
     NSLog(@"Launched in %f sec", CFAbsoluteTimeGetCurrent() - StartTime);
 });
-
-
 ```
 > 上述代码使用`CFAbsoluteTimeGetCurrent()`方法来计算时间，`CFAbsoluteTimeGetCurrent()`的概念和`NSDate`非常相似，只不过参考点是以 GMT 为标准的，2001年一月一日00：00：00这一刻的时间绝对值。`CFAbsoluteTimeGetCurrent()`也会跟着当前设备的系统时间一起变化，也可能会被用户修改。他的精确度可能是微秒（μs）
 
@@ -375,7 +368,6 @@ static inline NSTimeInterval MachTimeToSeconds(uint64_t machTime) {
         }];
     }
 }
-
 ```
 
 > 因为类的`+ load`方法在`main`函数执行之前调用，所以我们可以在`+ load`方法记录开始时间，同时监听`UIApplicationDidFinishLaunchingNotification`通知，收到通知时将时间相减作为应用启动时间，这样做有一个好处，不需要侵入到业务方的`main`函数去记录开始时间点。
@@ -423,7 +415,6 @@ static inline NSTimeInterval MachTimeToSeconds(uint64_t machTime) {
     float fps = _count / delta;
     _count = 0;    
 }
-
 ```
 > 上面是 `YYText` 中 Demo 的 `YYFPSLabel`，主要是基于`CADisplayLink`以屏幕刷新频率同步绘图的特性，尝试根据这点去实现一个可以观察屏幕当前帧数的指示器。`YYWeakProxy`的使用是为了避免循环引用。
 
@@ -515,9 +506,7 @@ static void runLoopObserverCallBack(CFRunLoopObserverRef observer, CFRunLoopActi
             timeoutCount = 0;
         }
     });
-}
-
-                                                          
+}                                                 
 ```
 
 > 代码中使用 `timeoutCount` 变量来覆盖多次连续的小卡顿，当累计次数超过5次，也会进入到卡顿逻辑。
@@ -536,11 +525,11 @@ NSString *report = [PLCrashReportTextFormatter stringValueForCrashReport:reporte
 
 ## Network
 
-国内移动网络环境极为复杂，WIFI、4G、3G、2.5G(Edge)、2G 等多种移动网络并存，用户的网络可能会在 WIFI/4G/3G/2.5G/2G 类型中切换，这是移动网络和传统网络一个很大的区别，被称作是 Connection Migration 问题。此外，国内运营商网络的 DNS 解析慢、失败率高、DNS 别劫持的问题；还有国内运营商互联和海外访问国内带宽低传输慢等问题。这些网络问题令人非常头疼。移动网络的现状造成了用户在使用过程中经常会遇到各种网络问题，网络问题将直接导致用户无法在 App 进行操作，当一些关键的业务接口出现错误时，甚至会直接导致用户的大量流失。以往要解决这些问题，只能靠经验和猜想，而如果能站在 App 的视角对网络进行监控，就能更有针对性地了解产生问题的根源。
+国内移动网络环境非常复杂，WIFI、4G、3G、2.5G(Edge)、2G 等多种移动网络并存，用户的网络可能会在 WIFI/4G/3G/2.5G/2G 类型之间切换，这是移动网络和传统网络一个很大的区别，被称作是 Connection Migration 问题。此外，还存在国内运营商网络的 DNS 解析慢、失败率高、DNS 被劫持的问题；还有国内运营商互联和海外访问国内带宽低传输慢等问题。这些网络问题令人非常头疼。移动网络的现状造成了用户在使用过程中经常会遇到各种网络问题，网络问题将直接导致用户无法在 App 进行操作，当一些关键的业务接口出现错误时，甚至会直接导致用户的大量流失。网络问题给移动开发带来了巨大挑战，同时也给网络监控带来了全新的机遇。以往要解决这些问题，只能靠经验和猜想，而如果能站在 App 的视角对网络进行监控，就能更有针对性地了解产生问题的根源。
 
 网络监控一般通过 `NSURLProtocol` 和代码注入（Hook）这两种方式来实现，由于 `NSURLProtocol` 作为上层接口，使用起来更为方便，因此大部分 SDK 都选择它来实现流量监控，但是 `NSURLProtocol` 属于 **URL Loading System** 体系中，应用层的协议支持有限，只支持 **FTP**，**HTTP**，**HTTPS** 等几个应用层协议，对于使用其他协议的流量则束手无策，所以存在一定的局限性。监控底层网络库 `CFNetwork` 则没有这个限制，有些人可能会问为什么不用更加底层的 **BSD Socket**，那样不是可以得到更多的控制吗？不使用 **BSD Socket** 理由是 **BSD Socket** 既不走系统中的 VPN 通道，也没相关的 API 来自动激活已经关闭掉的 Wi-Fi 或蜂窝无线设备，另外有人反应使用 **Fishhook** 没办法 hook **BSD Socket**。
 
-下面是网络数据采集的主要关键性能指标：
+下面是网络采集的关键性能指标：
 
 * TCP 建立连接时间
 * DNS 时间
@@ -654,7 +643,7 @@ didReceiveResponse:(NSURLResponse *)response {
 
 如果我们使用手工埋点的方式来监控网络，会侵入到业务代码，维护成本会非常高。通过 Hook 将网络性能监控的代码自动注入就可以避免上面的问题，做到真实用户体验监控（RUM: Real User Monitoring），监控应用在真实网络环境中的性能。
 
-> **AOP**(Aspect Oriented Programming，面向切面编程)，通过预编译方式和运行期动态代理实现在不修改源代码的情况下给程序动态添加功能的一种技术。其核心思想是将业务逻辑（核心关注点，系统的主要功能）与公共功能（横切关注点，如日志、事物等）进行分离，降低复杂性，提高软件系统模块化、可维护性和可重用性。其中核心关注点采用 **OOP** 方式进行代码的编写，横切关注点采用 **AOP** 方式进行编码，最后将这两种代码进行组合形成系统。**AOP** 被应用在日志记录，性能统计，安全控制，事务处理，异常处理等领域。
+> **AOP**(Aspect Oriented Programming，面向切面编程)，是通过预编译方式和运行期动态代理实现在不修改源代码的情况下给程序动态添加功能的一种技术。其核心思想是将业务逻辑（核心关注点，系统的主要功能）与公共功能（横切关注点，如日志、事物等）进行分离，降低复杂性，提高软件系统模块化、可维护性和可重用性。其中核心关注点采用 **OOP** 方式进行代码的编写，横切关注点采用 **AOP** 方式进行编码，最后将这两种代码进行组合形成系统。**AOP** 被广泛应用在日志记录，性能统计，安全控制，事务处理，异常处理等领域。
 
 在 iOS 中 **AOP** 的实现是基于 **Objective-C** 的 **Runtime** 机制，实现 Hook 的三种方式分别为：**Method Swizzling**、**NSProxy** 和 **Fishhook**。前两者适用于 **Objective-C** 实现的库，如 `NSURLConnection` 和 `NSURLSession` ，**Fishhook** 则适用于 **C** 语言实现的库，如 `CFNetwork`。
 
@@ -685,7 +674,7 @@ didReceiveResponse:(NSURLResponse *)response {
 
 > NSProxy is an abstract superclass defining an API for objects that act as stand-ins for other objects or for objects that don’t exist yet. Typically, a message to a proxy is forwarded to the real object or causes the proxy to load (or transform itself into) the real object. Subclasses of NSProxy can be used to implement transparent distributed messaging (for example, NSDistantObject) or for lazy instantiation of objects that are expensive to create.
 
-这是 Apple 官方文档给的 `NSProxy` 的定义，`NSProxy` 和 `NSObject` 一样都是根类，它是一个抽象类，你可以通过继承它，并重写 `-forwardInvocation:` 和 `-methodSignatureForSelector:` 方法以实现消息转发到另一个实例。综上，`NSProxy` 的目的就是负责将消息转发到真正的 target 的代理类。
+这是 Apple 官方文档给 `NSProxy` 的定义，`NSProxy` 和 `NSObject` 一样都是根类，它是一个抽象类，你可以通过继承它，并重写 `-forwardInvocation:` 和 `-methodSignatureForSelector:` 方法以实现消息转发到另一个实例。综上，`NSProxy` 的目的就是负责将消息转发到真正的 target 的代理类。
 
 **Method swizzling** 替换方法需要指定类名，但是 `NSURLConnectionDelegate` 和 `NSURLSessionDelegate` 是由业务方指定，通常来说是不确定，所以这种场景不适合使用 **Method swizzling**。使用 `NSProxy` 可以解决上面的问题，具体实现：proxy delegate 替换 `NSURLConnection` 和 `NSURLSession` 原来的 delegate，如果当 proxy delegate 收到回调时，如果是要 hook 的方法，则调用 proxy 的实现，proxy 的实现最后会调用原来的 delegate；如果不是要 hook 的方法，则通过消息转发机制将消息转发给原来的 delegate。下图示意了整个操作流程。
 
@@ -813,7 +802,6 @@ void save_original_symbols() {
 rebind_symbols((struct rebinding[1]){{"CFReadStreamCreateForHTTPRequest", XX_CFReadStreamCreateForHTTPRequest, (void *)& original_CFReadStreamCreateForHTTPRequest}}, 1);                                                    
 ```
 
-
 根据 `CFNetwork` API 的调用方式，使用 **fishhook** 和 Proxy Stream 获取 **C** 函数的设计模型如下：
 
 <p align="center">
@@ -821,6 +809,26 @@ rebind_symbols((struct rebinding[1]){{"CFReadStreamCreateForHTTPRequest", XX_CFR
 <img src="Images/cfnetwork_monitor_2.png" width="500">
 
 </p>
+
+### NSURLSessionTaskMetrics
+
+Apple 在 iOS 10 的 `NSURLSessionTaskDelegate` 代理中新增了 `-URLSession: task:didFinishCollectingMetrics:` 方法，如果实现这个代理方法，就可以通过该回调的 `NSURLSessionTaskMetrics` 类型参数获取到采集到网络指标。
+
+<p align="center">
+
+<img src="Images/uslsessionmetrics.png">
+
+</p>
+
+
+``` objective-c
+/*
+ * Sent when complete statistics information has been collected for the task.
+ */
+- (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didFinishCollectingMetrics:(NSURLSessionTaskMetrics *)metrics API_AVAILABLE(macosx(10.12), ios(10.0), watchos(3.0), tvos(10.0));
+```
+
+
 
 
 ## Power consumption
