@@ -812,7 +812,7 @@ rebind_symbols((struct rebinding[1]){{"CFReadStreamCreateForHTTPRequest", XX_CFR
 
 ### NSURLSessionTaskMetrics/NSURLSessionTaskTransactionMetrics
 
-Apple 在 iOS 10 的 `NSURLSessionTaskDelegate` 代理中新增了 `-URLSession: task:didFinishCollectingMetrics:` 方法，如果实现这个代理方法，就可以通过该回调的 `NSURLSessionTaskMetrics` 类型参数获取到采集到网络指标，实现对网络请求中 DNS 查询/TCP 建立连接/TLS 握手/请求响应等各环节时间上的统计。
+Apple 在 iOS 10 的 `NSURLSessionTaskDelegate` 代理中新增了 `-URLSession: task:didFinishCollectingMetrics:` 方法，如果实现这个代理方法，就可以通过该回调的 `NSURLSessionTaskMetrics` 类型参数获取到采集的网络指标，实现对网络请求中 DNS 查询/TCP 建立连接/TLS 握手/请求响应等各环节时间的统计。
 
 ``` objective-c
 /*
@@ -909,7 +909,7 @@ Apple 在 iOS 10 的 `NSURLSessionTaskDelegate` 代理中新增了 `-URLSession:
 	@property (assign, readonly) NSURLSessionTaskMetricsResourceFetchType resourceFetchType;
 	```
 
-对于下面所有 `NSDate` 类型指标，如果任务没有完成，所有相应的 `EndDate` 指标都将为 `nil`。例如，如果 DNS 解析超时、失败或者客户端在解析成功之前取消，`domainLookupStartDate` 会有对应的数据，然而 `domainLookupEndDate` 已经在它之后的所有指标都为 `nil`。
+对于下面所有 `NSDate` 类型指标，如果任务没有完成，所有相应的 `EndDate` 指标都将为 `nil`。例如，如果 DNS 解析超时、失败或者客户端在解析成功之前取消，`domainLookupStartDate` 会有对应的数据，然而 `domainLookupEndDate` 以及在它之后的所有指标都为 `nil`。
 
 这幅图示意了一次 HTTP 请求在各环节分别做了哪些工作
 
@@ -962,18 +962,7 @@ Apple 在 iOS 10 的 `NSURLSessionTaskDelegate` 代理中新增了 `-URLSession:
 	 */
 	@property (nullable, copy, readonly) NSDate *connectStartDate;
 	```
-
-* `connectStartDate`:客户端与服务器开始建立 TCP 连接的时间。
-
-	``` objective-c
-	/*
-	 * connectStartDate is the time immediately before the user agent started establishing the connection to the server.
-	 *
-	 * For example, this would correspond to the time immediately before the user agent started trying to establish the TCP connection.
-	 */
-	@property (nullable, copy, readonly) NSDate *connectStartDate;
-	```
-
+	
 	* `secureConnectionStartDate `:HTTPS 的 TLS 握手开始时间。
 	
 		``` objective-c
@@ -1168,9 +1157,6 @@ SELECT datetime(timestamp, 'unixepoch') AS TIME, BLMAppName FROM PLBLMAccounting
 ```       
 
 > 发现 `iOSDiagnosticsSupport` Framework 在 iOS 10 之后名字已经被改成 `DiagnosticsSupport`，而且 `MBSDevice` 类也被隐藏了。
-
-## 维度
-
 
 ## Author
 
