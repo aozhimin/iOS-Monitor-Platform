@@ -10,6 +10,12 @@
 
 这篇文章是我在开发 iOS 性能监控平台 SDK 过程前期的调研和沉淀。主要会探讨在 iOS 平台下如何采集性能指标，如 **CPU 占用率、内存使用情况、FPS、冷启动、热启动时间，网络，耗电量**等，剖析每一项性能指标的具体实现方式，SDK 的实现会有一定的技术难度，这也是我为什么写这篇文章的原因，我希望能够将开发过程中的一些心得和体会记录下来，同时后续我会将实现 SDK 的详细细节开源出来，希望能对读者有所帮助。
 
+## 项目名称的来源
+
+我们团队将这个项目命名为 **Wedjat（华狄特）**，取自古埃及神话中鹰头神荷鲁斯的眼睛，荷鲁斯是古埃及神话中法老的守护神，它被描绘成鹰的样子，象征着他是“天空之王”。**Wedjat** 的寓意恰好与我们性能监控 SDK 的愿景相契合。
+
+> 荷鲁斯之眼又称真知之眼、埃及乌加眼，是一个自古埃及时代便流传至今的符号，也是古埃及文化中最令外人印象深刻的符号之一。荷鲁斯之眼顾名思义，它是鹰头神荷鲁斯的眼睛。荷鲁斯的右眼象征完整无缺的太阳，依据传说，因荷鲁斯战胜赛特，右眼有着远离痛苦，战胜邪恶的力量，荷鲁斯的左眼象征有缺损的月亮，依据传说，荷鲁斯后来将左眼献给欧西里斯，因而左眼亦有分辨善恶、捍卫健康与幸福的作用，亦使古埃及人也相信荷鲁斯的左眼具有复活死者的力量。
+
 ## CPU
 
 > A CPU chip is designed for portable computers, it is typically housed in a smaller chip package, but more importantly, in order to run cooler, it uses lower voltages than its desktop counterpart and has more "sleep mode" capability. A mobile processor can be throttled down to different power levels or sections of the chip can be turned off entirely when not in use. Further, the clock frequency may be stepped down under low processor loads. This stepping down conserves power and prolongs battery life.
