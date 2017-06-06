@@ -521,10 +521,12 @@ Apple 在 iOS 10 的 `NSURLSessionTaskDelegate` 代理中新增了 `-URLSession:
 	@property (nullable, copy, readonly) NSDate *responseEndDate;
 	```
 	
+## Wrap up
+
+iOS 的网络监控有两种实现方式：`NSURLProtocol` 和代码注入（Hook），文中给出了通过 `NSURLProtocol` 实现监控的具体实现，然后分别介绍了在 iOS 中如何使用 **Method Swizzling** 、**NSProxy** 和 **Fishhook** 进行 AOP Hook，文章也给出了三种 AOP Hook 技术在 `NSURLConnection`、`NSURLSession` 和 `CFNetwork` 的案例。最后详细介绍在 iOS 10 中新引入的 `NSURLSessionTaskMetrics` 和 `NSURLSessionTaskTransactionMetrics` 类，它们可以被用于获取网络相关的元数据，比如 DNS 查询、TLS 握手、请求响应等环节的耗时，这些数据可以帮助开发人员更好地分析网络性能。
 
 ## 参考资料
 
-* [iOS-System-Services](https://github.com/Shmoopi/iOS-System-Services)
 * [移动端性能监控方案 Hertz](http://tech.meituan.com/hertz.html)
 * [NetworkEye](https://github.com/coderyi/NetworkEye)
 * [netfox](https://github.com/kasketis/netfox)
