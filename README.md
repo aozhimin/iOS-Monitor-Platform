@@ -6,8 +6,8 @@
 
 为了让这篇文章能够在公众号发表，所以将文章拆解成上下两篇：基础性能篇和网络篇
 
-*  [iOS 性能监控方案 Wedjat 之基础性能篇](iOS-Monitor-Platform1.md)
-*  [iOS 性能监控方案 Wedjat 之网络篇](iOS-Monitor-Platform2.md)
+*  [iOS 性能监控方案 Wedjat 之基础性能篇](iOS-Monitor-Platform_Basic.md)
+*  [iOS 性能监控方案 Wedjat 之网络篇](iOS-Monitor-Platform_Network.md)
 
 
 ## 为什么写这篇文章？
