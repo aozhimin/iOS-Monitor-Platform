@@ -554,99 +554,103 @@ NSString *report = [PLCrashReportTextFormatter stringValueForCrashReport:reporte
 ### NSURLProtocol
 
 ``` objective-c
-//MyHttpProtocol.m
+//为了避免 canInitWithRequest 和 canonicalRequestForRequest 出现死循环
+static NSString * const HJHTTPHandledIdentifier = @"hujiang_http_handled";
 
-#import <Foundation/Foundation.h>
-#import "MyHttpProtocol.h"
+@interface HJURLProtocol () <NSURLSessionTaskDelegate, NSURLSessionDataDelegate>
 
-@implementation MyHttpProtocol
+@property (nonatomic, strong) NSURLSessionDataTask *dataTask;
+@property (nonatomic, strong) NSOperationQueue     *sessionDelegateQueue;
+@property (nonatomic, strong) NSURLResponse        *response;
+@property (nonatomic, strong) NSMutableData        *data;
+@property (nonatomic, strong) NSDate               *startDate;
+@property (nonatomic, strong) HJHTTPModel          *httpModel;
 
-+(BOOL)canInitWithRequest:(NSURLRequest *)request {    
-   NSString *scheme =[[request URL] scheme];
-    if([[scheme lowercaseString] isEqualToString:@"http"]||
-       [[scheme lowercaseString] isEqualToString:@"https"])
-    {
-        if([NSURLProtocol propertyForKey:@"processed" inRequest:request]){
-            return NO;
-        }
-        return YES;
+@end
+
++ (BOOL)canInitWithRequest:(NSURLRequest *)request {
+    if (![request.URL.scheme isEqualToString:@"http"] &&
+        ![request.URL.scheme isEqualToString:@"https"]) {
+        return NO;
     }
-    return NO;
-}
-
-
-+ (NSURLRequest *)canonicalRequestForRequest:(NSURLRequest *)request {
-    NSMutableURLRequest * duplicatedRequest;
-    duplicatedRequest =  [request mutableCopy];
-    [NSURLProtocol setProperty:@YES forKey:@"processed" inRequest:duplicatedRequest];
-    NSLog(@"%@",request.HTTPBody);
-    return (NSURLRequest *) duplicatedRequest;
-}
-
-#pragma mark - NSURLConnectionDelegate
-
-- (void)connection:(NSURLConnection *)connection
-  didFailWithError:(NSError *)error {
-    [[self client] URLProtocol:self didFailWithError:error];
-}
-
-- (BOOL)connectionShouldUseCredentialStorage:(NSURLConnection *)connection {
+    
+    if ([NSURLProtocol propertyForKey:HJHTTPHandledIdentifier inRequest:request] ) {
+        return NO;
+    }
     return YES;
 }
 
-- (void)connection:(NSURLConnection *)connection
-didReceiveAuthenticationChallenge:(NSURLAuthenticationChallenge *)challenge {
-    [[self client] URLProtocol:self didReceiveAuthenticationChallenge:challenge];
++ (NSURLRequest *)canonicalRequestForRequest:(NSURLRequest *)request {
+    
+    NSMutableURLRequest *mutableReqeust = [request mutableCopy];
+    [NSURLProtocol setProperty:@YES
+                        forKey:HJHTTPHandledIdentifier
+                     inRequest:mutableReqeust];
+    return [mutableReqeust copy];
 }
 
-- (void)connection:(NSURLConnection *)connection
-didCancelAuthenticationChallenge:(NSURLAuthenticationChallenge *)challenge {
-    [[self client] URLProtocol:self didCancelAuthenticationChallenge:challenge];
+- (void)startLoading {
+    self.startDate                                        = [NSDate date];
+    self.data                                             = [NSMutableData data];
+    NSURLSessionConfiguration *configuration              = [NSURLSessionConfiguration defaultSessionConfiguration];
+    self.sessionDelegateQueue                             = [[NSOperationQueue alloc] init];
+    self.sessionDelegateQueue.maxConcurrentOperationCount = 1;
+    self.sessionDelegateQueue.name                        = @"com.hujiang.wedjat.session.queue";
+    NSURLSession *session                                 = [NSURLSession sessionWithConfiguration:configuration delegate:self delegateQueue:self.sessionDelegateQueue];
+    self.dataTask                                         = [session dataTaskWithRequest:self.request];
+    [self.dataTask resume];
+
+    httpModel                                             = [[NEHTTPModel alloc] init];
+    httpModel.request                                     = self.request;
+    httpModel.startDateString                             = [self stringWithDate:[NSDate date]];
+
+    NSTimeInterval myID                                   = [[NSDate date] timeIntervalSince1970];
+    double randomNum                                      = ((double)(arc4random() % 100))/10000;
+    httpModel.myID                                        = myID+randomNum;
 }
 
-#pragma mark - NSURLConnectionDataDelegate
-- (NSURLRequest *)connection:(NSURLConnection *)connection willSendRequest:(NSURLRequest *)request redirectResponse:(NSURLResponse *)response {
+- (void)stopLoading {
+    [self.dataTask cancel];
+    self.dataTask           = nil;
+    httpModel.response      = (NSHTTPURLResponse *)self.response;
+    httpModel.endDateString = [self stringWithDate:[NSDate date]];
+    NSString *mimeType      = self.response.MIMEType;
+    
+    // 解析 response，流量统计等
+}
+
+#pragma mark - NSURLSessionTaskDelegate
+
+- (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didCompleteWithError:(NSError *)error {
+    if (!error) {
+        [self.client URLProtocolDidFinishLoading:self];
+    } else if ([error.domain isEqualToString:NSURLErrorDomain] && error.code == NSURLErrorCancelled) {
+    } else {
+        [self.client URLProtocol:self didFailWithError:error];
+    }
+    self.dataTask = nil;
+}
+
+#pragma mark - NSURLSessionDataDelegate
+
+- (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)dataTask
+    didReceiveData:(NSData *)data {
+    [self.client URLProtocol:self didLoadData:data];
+}
+
+- (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)dataTask didReceiveResponse:(NSURLResponse *)response completionHandler:(void (^)(NSURLSessionResponseDisposition))completionHandler {
+    [[self client] URLProtocol:self didReceiveResponse:response cacheStoragePolicy:NSURLCacheStorageAllowed];
+    completionHandler(NSURLSessionResponseAllow);
+    self.response = response;
+}
+
+- (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task willPerformHTTPRedirection:(NSHTTPURLResponse *)response newRequest:(NSURLRequest *)request completionHandler:(void (^)(NSURLRequest * _Nullable))completionHandler {
     if (response != nil){
         self.response = response;
         [[self client] URLProtocol:self wasRedirectedToRequest:request redirectResponse:response];
     }
-    return request;
 }
 
-- (void)connection:(NSURLConnection *)connection
-didReceiveResponse:(NSURLResponse *)response {
-    [[self client] URLProtocol:self didReceiveResponse:response cacheStoragePolicy:NSURLCacheStorageAllowed];
-    self.response = response;
-}
-
-- (void)connection:(NSURLConnection *)connection
-    didReceiveData:(NSData *)data {
-    NSString *mimeType = self.response.MIMEType;
-    if ([mimeType isEqualToString:@"application/json"]) {
-        NSArray *allMapRequests = [[NEHTTPModelManager defaultManager] allMapObjects];
-        for (NSInteger i=0; i < allMapRequests.count; i++) {
-            NEHTTPModel *req = [allMapRequests objectAtIndex:i];
-            if ([[ne_HTTPModel.ne_request.URL absoluteString] containsString:req.mapPath]) {
-                NSData *jsonData = [req.mapJSONData dataUsingEncoding:NSUTF8StringEncoding];
-                [[self client] URLProtocol:self didLoadData:jsonData];
-                [self.data appendData:jsonData];
-                return;
-
-            }
-        }
-    }
-    [[self client] URLProtocol:self didLoadData:data];
-    [self.data appendData:data];
-}
-
-- (NSCachedURLResponse *)connection:(NSURLConnection *)connection
-                  willCacheResponse:(NSCachedURLResponse *)cachedResponse {
-    return cachedResponse;
-}
-
-- (void)connectionDidFinishLoading:(NSURLConnection *)connection {
-    [[self client] URLProtocolDidFinishLoading:self];
-}                                                         
 ```
 
 > **Hertz** 使用的是 `NSURLProtocol` 这种方式，通过继承 `NSURLProtocol`，实现 `NSURLConnectionDelegate` 来实现截取行为。
