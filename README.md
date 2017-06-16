@@ -1183,7 +1183,7 @@ Email: aozhimin0811@gmail.com
 ## 参考资料
 
 * 《Mac OS X and iOS Internals: To the Apple’s Core》
-* 《OS X and iOS Kernel Programming》
+* [《OS X and iOS Kernel Programming》](https://github.com/aozhimin/awesome-iOS-resource/blob/master/Books/OSX%E4%B8%8EiOS%E5%86%85%E6%A0%B8%E7%BC%96%E7%A8%8B.pdf)
 * [Handling low memory conditions in iOS and Mavericks](http://newosxbook.com/articles/MemoryPressure.html)
 * [iOS-System-Services](https://github.com/Shmoopi/iOS-System-Services)
 * [GT](https://github.com/Tencent/GT)
