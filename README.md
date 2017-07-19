@@ -94,7 +94,7 @@ float cpu_usage()
     mach_msg_type_number_t task_info_count;
 
     task_info_count = TASK_INFO_MAX;
-    kr = task_info(mach_task_self(), TASK_BASIC_INFO, (task_info_t)tinfo, &task_info_count);
+    kr = task_info(mach_task_self(), MACH_TASK_BASIC_INFO, (task_info_t)tinfo, &task_info_count);
     if (kr != KERN_SUCCESS) {
         return -1;
     }
