@@ -364,6 +364,25 @@ int64_t getUsedMemory()
 }
 ```
 
+获取当前设备可用的 **Memory**
+
+``` objective-c
++ (uint64_t)availableMemory {
+    vm_statistics64_data_t vmStats;
+    mach_msg_type_number_t infoCount = HOST_VM_INFO_COUNT;
+    kern_return_t kernReturn = host_statistics(mach_host_self(),
+                                               HOST_VM_INFO,
+                                               (host_info_t)&vmStats,
+                                               &infoCount);
+    
+    if (kernReturn != KERN_SUCCESS) {
+        return NSNotFound;
+    }
+        
+    return vm_page_size * (vmStats.free_count +vmStats.inactive_count);
+}
+```
+
 ## Startup Time
 
 毫无疑问移动应用的启动时间是影响用户体验的一个重要方面，那么我们究竟该如何通过启动时间来衡量一个应用性能的好坏呢？启动时间可以从冷启动和热启动两个角度去测量
