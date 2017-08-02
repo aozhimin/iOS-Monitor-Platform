@@ -274,7 +274,7 @@ CPU 频率，就是 CPU 的时钟频率， 是 CPU 运算时的工作的频率�
 
 在 iOS 中与 CPU 频率相关的性能指标有三个：CPU 频率，CPU 最大频率 和 CPU 最小频率。
 
-下面代码给出了获取 CPU 频率的实现，笔者通过反编译发现手淘，
+下面代码给出了获取 CPU 频率的实现，笔者通过反编译发现手淘，腾讯视频等应用也是通过这种方式获取 CPU 频率，所以这种实现应当没问题。
 
 ``` objective-c
 + (NSUInteger)getSysInfo:(uint)typeSpecifier {
@@ -290,6 +290,41 @@ CPU 频率，就是 CPU 的时钟频率， 是 CPU 运算时的工作的频率�
 }
 ```
 
+要获取 CPU 最大频率 和 CPU 最小频率这两个性能指标也需要用到 `sysctl`，`sysctl` 是用以查询内核状态的接口，具体实现如下
+
+``` objective-c
+static inline Boolean WDTCanGetSysCtlBySpecifier(char* specifier, size_t *size) {
+    if (!specifier || strlen(specifier) == 0 ||
+        sysctlbyname(specifier, NULL, size, NULL, 0) == -1 || size == -1) {
+        return false;
+    }
+    return true;
+}
+
+static inline uint64_t WDTGetSysCtl64BySpecifier(char* specifier) {
+    size_t size = -1;
+    uint64_t val = 0;
+    
+    if (!WDTCanGetSysCtlBySpecifier(specifier, &size)) {
+        return -1;
+    }
+    
+    if (sysctlbyname(specifier, &val, &size, NULL, 0) == -1)
+    {
+        return -1;
+    }
+
+    return val;
+}
+
++ (NSUInteger)cpuMaxFrequency {
+    return (NSUInteger)WDTGetSysCtl64BySpecifier("hw.cpufrequency_max");
+}
+
++ (NSUInteger)cpuMinFrequency {
+    return (NSUInteger)WDTGetSysCtl64BySpecifier("hw.cpufrequency_min");
+}
+```
 
 ## Memory
 
