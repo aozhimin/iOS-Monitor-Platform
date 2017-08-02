@@ -274,6 +274,23 @@ CPU 频率，就是 CPU 的时钟频率， 是 CPU 运算时的工作的频率�
 
 在 iOS 中与 CPU 频率相关的性能指标有三个：CPU 频率，CPU 最大频率 和 CPU 最小频率。
 
+下面代码给出了获取 CPU 频率的实现，笔者通过反编译发现手淘，
+
+``` objective-c
++ (NSUInteger)getSysInfo:(uint)typeSpecifier {
+    size_t size = sizeof(int);
+    int results;
+    int mib[2] = {CTL_HW, typeSpecifier};
+    sysctl(mib, 2, &results, &size, NULL, 0);
+    return (NSUInteger)results;
+}
+
++ (NSUInteger)getCpuFrequency {
+    return [self getSysInfo:HW_CPU_FREQ];
+}
+```
+
+
 ## Memory
 
 > 物理内存（**RAM**）与 **CPU** 一样都是系统中最稀少的资源，也是最有可能产生竞争的资源，应用内存与性能直接相关 - 通常是以牺牲别的应用为代价。 不像 PC 端，iOS 没有交换空间作为备选资源，这就使得内存资源尤为重要。事实上，在 iOS 中就有 **Jetsam** 机制负责处理系统低 **RAM** 事件，**Jetsam** 是一种类似 Linux 的 Out-Of-Memory(Killer) 的机制。
