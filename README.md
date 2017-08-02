@@ -485,7 +485,7 @@ int64_t getUsedMemory()
         return NSNotFound;
     }
         
-    return vm_page_size * (vmStats.free_count +vmStats.inactive_count);
+    return vm_page_size * (vmStats.free_count + vmStats.inactive_count);
 }
 ```
 
