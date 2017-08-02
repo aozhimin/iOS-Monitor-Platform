@@ -10,6 +10,39 @@
 *  [iOS 性能监控方案 Wedjat 之网络篇](iOS-Monitor-Platform_Network.md)
 
 
+## 目录
+
+* [为什么写这篇文章？](#为什么写这篇文章)
+* [项目名称的来源](#项目名称的来源)
+* [CPU](#cpu)
+	* [APP 的 CPU 占用率](#app-的-cpu-占用率)
+	* [总的 CPU 占用率](#总的-cpu-占用率)
+	* [CPU 频率](#cpu-频率)
+* [Memory](#memory)
+* [Startup Time](#startup-time)
+* [FPS](#fps)
+* [Freezing/Lag](#freezinglag)
+	* [为什么会出现卡顿](#为什么会出现卡顿)
+	* [如何监控卡顿](#如何监控卡顿) 
+* [Network](#network)
+	* [NSURLProtocol](#nsurlprotocol)
+	* [Hook](#hook)
+		* [Method Swizzling](#method-swizzling) 
+		* [NSProxy](#nsproxy)
+		* [Fishhook](#fishhook)
+	* [NSURLConnection](#nsurlconnection)
+	* [NSURLSession](#nsurlsession)
+	* [CFNetwork](#cfnetwork)
+	* [NSURLSessionTaskMetrics/NSURLSessionTaskTransactionMetrics](#nsurlsessiontaskmetricsnsurlsessiontasktransactionmetrics)
+		* [NSURLSessionTaskMetrics](#nsurlsessiontaskmetrics) 
+		* [NSURLSessionTaskTransactionMetrics](#nsurlsessiontasktransactionmetrics) 
+* [Power consumption](#power-consumption)
+		* [UIDevice](#uidevice) 
+		* [IOKit](#iokit) 
+		* [越狱方案](#越狱方案) 
+* [Author](#author)
+* [参考资料](#参考资料)
+
 ## 为什么写这篇文章？
 
 随着移动互联网向纵深发展，用户变得越来越关心应用的体验，开发者必须关注应用性能所带来的用户流失问题。据统计，有十种应用性能问题危害最大，分别为：连接超时、闪退、卡顿、崩溃、黑白屏、网络劫持、交互性能差、CPU 使用率问题、内存泄露、不良接口。开发者难以兼顾所有的性能问题，而在传统的开发流程中，我们解决性能问题的方式通常是在得到线上用户的反馈后，再由开发人员去分析引发问题的根源；显然，凭借用户的反馈来得知应用的性能问题这种方式很原始，也很不高效，它使得开发团队在应对应用性能问题上很被动；所以寻找一种更专业和高效的手段来保障应用的性能就变得势在必行。性能监控 SDK 的定位就是帮助开发团队快速精确地定位性能问题，进而推动应用的性能和用户体验的提升。
