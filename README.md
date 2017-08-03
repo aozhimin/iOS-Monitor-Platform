@@ -364,6 +364,14 @@ static inline uint64_t WDTGetSysCtl64BySpecifier(char* specifier) {
 
 > 但是实际在真机测试会发现，当 `specifier` 为 `hw.cpufrequency_max` 和 `hw.cpufrequency_min` 时，`sysctlbyname(specifier, NULL, size, NULL, 0)`函数的返回值为-1，导致无法获取这两个指标，模拟器上则正常，然而模拟器上获取的两个指标的值都是2700000000HZ，我的 MBP 的主频就是2.7GHZ。暂时也没找到有什么更好的方法能在真机上获取这两个指标。
 
+### CPU Type
+
+``` objective-c
++ (NSInteger)cpuType {
+    return (NSInteger)NXGetLocalArchInfo()->cputype;
+}
+```
+
 ## Memory
 
 > 物理内存（**RAM**）与 **CPU** 一样都是系统中最稀少的资源，也是最有可能产生竞争的资源，应用内存与性能直接相关 - 通常是以牺牲别的应用为代价。 不像 PC 端，iOS 没有交换空间作为备选资源，这就使得内存资源尤为重要。事实上，在 iOS 中就有 **Jetsam** 机制负责处理系统低 **RAM** 事件，**Jetsam** 是一种类似 Linux 的 Out-Of-Memory(Killer) 的机制。
