@@ -19,7 +19,6 @@
 	* [总的 CPU 占用率](#总的-cpu-占用率)
 	* [CPU 频率](#cpu-频率)
 	* [CPU Type](#cpu-type)
-	* [CPU Subtype](#cpu-subtype)
 * [Memory](#memory)
 	* [App 使用的内存](#app-使用的内存)
 	* [设备使用的内存](#设备使用的内存)
@@ -373,8 +372,6 @@ static inline uint64_t WDTGetSysCtl64BySpecifier(char* specifier) {
     return (NSInteger)NXGetLocalArchInfo()->cputype;
 }
 ```
-
-### CPU Subtype
 
 ``` objective-c
 + (NSInteger)cpuSubtype {
