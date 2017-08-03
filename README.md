@@ -372,6 +372,14 @@ static inline uint64_t WDTGetSysCtl64BySpecifier(char* specifier) {
 }
 ```
 
+### CPU Subtype
+
+``` objective-c
++ (NSInteger)cpuSubtype {
+    return (NSInteger)NXGetLocalArchInfo()->cpusubtype;
+}
+```
+
 ## Memory
 
 > 物理内存（**RAM**）与 **CPU** 一样都是系统中最稀少的资源，也是最有可能产生竞争的资源，应用内存与性能直接相关 - 通常是以牺牲别的应用为代价。 不像 PC 端，iOS 没有交换空间作为备选资源，这就使得内存资源尤为重要。事实上，在 iOS 中就有 **Jetsam** 机制负责处理系统低 **RAM** 事件，**Jetsam** 是一种类似 Linux 的 Out-Of-Memory(Killer) 的机制。
