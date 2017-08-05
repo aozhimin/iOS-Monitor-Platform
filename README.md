@@ -373,6 +373,7 @@ typedef struct {
 
 `NXArchInfo` 结构体成员变量中就包含我们需要的信息：`cputype` 和 `cputype`，这两个变量类型的定义在 `mach/machine.h` 头文件中给出，本质上都是 `int` 类型 `typedef` 得到的。
 
+根据 `mach/machine.h` 头文件给出的 CPU 架构类型的定义，可以很容易建立起各 CPU 架构到其对应描述的映射关系，代码实现如下：
 
 ``` objective-c
 + (NSInteger)cpuType {
@@ -385,6 +386,47 @@ typedef struct {
     return (NSInteger)NXGetLocalArchInfo()->cpusubtype;
 }
 ```
+
+``` objective-c
+- (NSString *)p_stringFromCpuType:(NSInteger)cpuType {
+    switch (cpuType) {
+        case CPU_TYPE_VAX:          return @"VAX";          
+        case CPU_TYPE_MC680x0:      return @"MC680x0";      
+        case CPU_TYPE_X86:          return @"X86";          
+        case CPU_TYPE_X86_64:       return @"X86_64";       
+        case CPU_TYPE_MC98000:      return @"MC98000";      
+        case CPU_TYPE_HPPA:         return @"HPPA";         
+        case CPU_TYPE_ARM:          return @"ARM";          
+        case CPU_TYPE_ARM64:        return @"ARM64";        
+        case CPU_TYPE_MC88000:      return @"MC88000";      
+        case CPU_TYPE_SPARC:        return @"SPARC";        
+        case CPU_TYPE_I860:         return @"I860";         
+        case CPU_TYPE_POWERPC:      return @"POWERPC";      
+        case CPU_TYPE_POWERPC64:    return @"POWERPC64";    
+        default:                    return @"Unknown";      
+    }
+}
+```
+
+``` objective-c
+- (NSString *)cpuTypeString {
+    if (!_cpuTypeString) {
+        _cpuTypeString = [self p_stringFromCpuType:[[self class] cpuType]];
+    }
+    
+    return _cpuTypeString;
+}
+
+- (NSString *)cpuSubtypeString {
+    if (!_cpuSubtypeString) {
+        _cpuSubtypeString = [NSString stringWithUTF8String:NXGetLocalArchInfo()->description];
+    }
+    
+    return _cpuSubtypeString;
+}
+```
+
+> 经测试发现 `NXArchInfo` 结构体成员变量 `description` 包含的就是 CPU 架构的详尽信息，所以可以用它作为 `cpuSubtypeString`，当然也可以自己建立 `cpuSubtype` 的映射关系。
 
 ## Memory
 
