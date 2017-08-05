@@ -359,7 +359,20 @@ static inline uint64_t WDTGetSysCtl64BySpecifier(char* specifier) {
 
 ### CPU Type
 
-我们知道 iPhone 使用的处理器架构都是 ARM 的，而 ARM 又分为 ARMV7、ARMV7S 和 ARM64等。而想要获取设备具体的处理器架构则需要使用 `NXGetLocalArchInfo()` 函数。
+我们知道 iPhone 使用的处理器架构都是 ARM 的，而 ARM 又分为 ARMV7、ARMV7S 和 ARM64等。而想要获取设备具体的处理器架构则需要使用 `NXGetLocalArchInfo()` 函数。这个函数的返回值是 `NXArchInfo` 结构体类型，如下：
+
+``` c
+typedef struct {
+    const char *name;
+    cpu_type_t cputype;
+    cpu_subtype_t cpusubtype;
+    enum NXByteOrder byteorder;
+    const char *description;
+} NXArchInfo;
+```
+
+`NXArchInfo` 结构体成员变量中就包含我们需要的信息：`cputype` 和 `cputype`，这两个变量类型的定义在 `mach/machine.h` 头文件中给出，本质上都是 `int` 类型 `typedef` 得到的。
+
 
 ``` objective-c
 + (NSInteger)cpuType {
