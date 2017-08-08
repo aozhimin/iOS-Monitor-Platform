@@ -536,7 +536,7 @@ int64_t getUsedMemory()
     }
     
     int wireMem = vmstat.wire_count * pagesize;
-	int activeMem = vmstat.active_count * pagesize;
+    int activeMem = vmstat.active_count * pagesize;
     return wireMem + activeMem;
 }
 ```
