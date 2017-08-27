@@ -231,7 +231,11 @@ kern_return_t thread_info
 
 ### 总的 CPU 占用率
 
+<del> 
+
 而获取整个设备的 CPU 占用率如下：
+
+</del> 
 
 ``` objective-c
 static NSUInteger const kMaxPercent = 100;
@@ -287,7 +291,111 @@ static NSUInteger const kMaxPercent = 100;
 }
 ```
 
+<del> 
+
 > 上述方法大致思路是先计算出每个 CPU 核心的占用率，然后将所有 CPU 核心的占用率相加得到设备总的 CPU 占用率，这主要参考 `top` 命令，它在计算多核 CPU 的占用率时，是把每个核的 CPU 占用率求和。
+
+</del>
+
+网上有很多文章都是通过上述方式去获取设备的 CPU 占用率，包括 **YYCategories**  中 `UIDevice` 的 `YYAdd` category 也是采用这种方式，但是其实计算出来的 CPU 占用率会维持一个值基本没有改变，要归功于 [ySssssssss](https://github.com/ySssssssss) 发现这个细节。上面这段代码其实存在问题，代码中的 `_prevCPUInfo` 和 `_numPrevCPUInfo` 等使用的是局部变量，这会造成对 `_prevCPUInfo` 非空的判断总是为假，最终计算 `_cpuInfo` 和 `_prevCPUInfo` 差值的那段代码根本不会执行。可以通过将这几个变量改为成员变量，或者使用静态变量。成员变量的写法如下：
+
+``` objective-c
+
+@implementation WDTDevice {
+    processor_info_array_t _cpuInfo, _prevCPUInfo;
+    mach_msg_type_number_t _numCPUInfo, _numPrevCPUInfo;
+    NSLock *_cpuUsageLock;
+}
+
+- (CGFloat)cpuUsage {
+    CGFloat cpuUsage = 0;
+    unsigned _numCPUs;
+    
+    int _mib[2U] = {CTL_HW, HW_NCPU};
+    size_t _sizeOfNumCPUs = sizeof(_numCPUs);
+    int _status = sysctl(_mib, 2U, &_numCPUs, &_sizeOfNumCPUs, NULL, 0U);
+    if (_status)
+        _numCPUs = 1;
+    
+    _cpuUsageLock = [[NSLock alloc] init];
+    
+    natural_t _numCPUsU = 0U;
+    kern_return_t err = host_processor_info(mach_host_self(), PROCESSOR_CPU_LOAD_INFO, &_numCPUsU, &_cpuInfo, &_numCPUInfo);
+    if (err == KERN_SUCCESS) {
+        [_cpuUsageLock lock];
+        
+        for (unsigned i = 0U; i < _numCPUs; ++i) {
+            CGFloat _inUse, _total = 0;
+            if (_prevCPUInfo) {
+                _inUse = (
+                          (_cpuInfo[(CPU_STATE_MAX * i) + CPU_STATE_USER]   - _prevCPUInfo[(CPU_STATE_MAX * i) + CPU_STATE_USER])
+                          + (_cpuInfo[(CPU_STATE_MAX * i) + CPU_STATE_SYSTEM] - _prevCPUInfo[(CPU_STATE_MAX * i) + CPU_STATE_SYSTEM])
+                          + (_cpuInfo[(CPU_STATE_MAX * i) + CPU_STATE_NICE]   - _prevCPUInfo[(CPU_STATE_MAX * i) + CPU_STATE_NICE])
+                          );
+                _total = _inUse + (_cpuInfo[(CPU_STATE_MAX * i) + CPU_STATE_IDLE] - _prevCPUInfo[(CPU_STATE_MAX * i) + CPU_STATE_IDLE]);
+            } else {
+                _inUse = _cpuInfo[(CPU_STATE_MAX * i) + CPU_STATE_USER] + _cpuInfo[(CPU_STATE_MAX * i) + CPU_STATE_SYSTEM] + _cpuInfo[(CPU_STATE_MAX * i) + CPU_STATE_NICE];
+                _total = _inUse + _cpuInfo[(CPU_STATE_MAX * i) + CPU_STATE_IDLE];
+            }
+            
+            if (_total != 0) {
+                cpuUsage += _inUse / _total;
+            }
+        }
+        
+        [_cpuUsageLock unlock];
+        if (_prevCPUInfo) {
+            size_t prevCpuInfoSize = sizeof(integer_t) * _numPrevCPUInfo;
+            vm_deallocate(mach_task_self(), (vm_address_t)_prevCPUInfo, prevCpuInfoSize);
+        }
+        
+        _prevCPUInfo = _cpuInfo;
+        _numPrevCPUInfo = _numCPUInfo;
+        
+        _cpuInfo = NULL;
+        _numCPUInfo = 0U;
+
+        return cpuUsage * kMaxPercent ;
+    } else {
+        return -1;
+    }
+}
+
+```
+
+改为这种写法之后发现结果几乎都在 100% 以上，所以这种写法依然存在问题。
+
+于是寻找到另外一种 `host_statistics` 函数拿到 `host_cpu_load_info` 的值，这个结构体的成员变量 `cpu_ticks` 包含了 CPU 运行的时钟脉冲的数量，`cpu_ticks` 是一个数组，里面分别包含了 `CPU_STATE_USER`, `CPU_STATE_SYSTEM`, `CPU_STATE_IDLE` 和 `CPU_STATE_NICE` 模式下的时钟脉冲。
+
+``` objective-c
++ (CGFloat)cpuUsage {
+    kern_return_t kr;
+    mach_msg_type_number_t count;
+    static host_cpu_load_info_data_t previous_info = {0, 0, 0, 0};
+    host_cpu_load_info_data_t info;
+    
+    count = HOST_CPU_LOAD_INFO_COUNT;
+    
+    kr = host_statistics(mach_host_self(), HOST_CPU_LOAD_INFO, (host_info_t)&info, &count);
+    if (kr != KERN_SUCCESS) {
+        return -1;
+    }
+    
+    natural_t user   = info.cpu_ticks[CPU_STATE_USER] + info.cpu_ticks[CPU_STATE_NICE]
+                       - previous_info.cpu_ticks[CPU_STATE_USER] - previous_info.cpu_ticks[CPU_STATE_NICE];
+    natural_t system = info.cpu_ticks[CPU_STATE_SYSTEM] - previous_info.cpu_ticks[CPU_STATE_SYSTEM];
+    natural_t idle   = info.cpu_ticks[CPU_STATE_IDLE] - previous_info.cpu_ticks[CPU_STATE_IDLE];
+    natural_t total  = user + system + idle;
+    previous_info    = info;
+    
+    return (user + system) * 100.0 / total;
+}
+
+```
+
+上面代码通过计算 `info` 和 `previous_info` 的差值，分别得到在这几个模式下的 `cpu_ticks`，除 `idle` 以外都属于 CPU 被占用的情况，最后就能求出 CPU 的占用率。
+
+经测试发现这种计算总的 CPU 占用率的方式与 iOS 系统的 top 命令的值吻合（测试环境：iPhone 5s 的越狱机器），并且 App Store 中的几个性能工具的应用都是采用这种方式去计算设备的 CPU 占用率的，比如**简易系统状态**和 **Battery Memory System Status Monitor** 这两款应用。
 
 ### CPU 核数
 
