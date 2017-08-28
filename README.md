@@ -381,16 +381,15 @@ static NSUInteger const kMaxPercent = 100;
         return -1;
     }
     
-    natural_t user   = info.cpu_ticks[CPU_STATE_USER] + info.cpu_ticks[CPU_STATE_NICE]
-                       - previous_info.cpu_ticks[CPU_STATE_USER] - previous_info.cpu_ticks[CPU_STATE_NICE];
+    natural_t user   = info.cpu_ticks[CPU_STATE_USER] - previous_info.cpu_ticks[CPU_STATE_USER];
+    natural_t nice   = info.cpu_ticks[CPU_STATE_NICE] - previous_info.cpu_ticks[CPU_STATE_NICE];
     natural_t system = info.cpu_ticks[CPU_STATE_SYSTEM] - previous_info.cpu_ticks[CPU_STATE_SYSTEM];
     natural_t idle   = info.cpu_ticks[CPU_STATE_IDLE] - previous_info.cpu_ticks[CPU_STATE_IDLE];
-    natural_t total  = user + system + idle;
+    natural_t total  = user + nice + system + idle;
     previous_info    = info;
     
-    return (user + system) * 100.0 / total;
+    return (user + nice + system) * 100.0 / total;
 }
-
 ```
 
 上面代码通过计算 `info` 和 `previous_info` 的差值，分别得到在这几个模式下的 `cpu_ticks`，除 `idle` 以外都属于 CPU 被占用的情况，最后就能求出 CPU 的占用率。
