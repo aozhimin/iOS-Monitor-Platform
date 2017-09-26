@@ -606,6 +606,9 @@ kern_return_t task_info
 	}
 }
 ```
+
+> 如果将上述代码采集到的 App RAM 的使用值与 Xcode 的 Debug Gauges 的 memory 对比，会发现代码会比 Debug Gauges 多几十 MB，具体的原因请看[这个 issue 的讨论](https://github.com/aozhimin/iOS-Monitor-Platform/issues/5)。
+
 与获取 **CPU** 占用率类似，在调用 `task_info` API 时，`target_task` 参数传入的是 `mach_task_self()`，表示获取当前的 Mach task，另外 `flavor` 参数传的是 `MACH_TASK_BASIC_INFO`，使用这个类型会返回 `mach_task_basic_info` 结构体，表示返回 `target_task` 的基本信息，比如 task 的挂起次数和驻留页面数量。
 
 如果想获取设备所有物理内存大小可以通过 `NSProcessInfo`。
