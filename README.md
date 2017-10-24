@@ -462,7 +462,7 @@ static inline uint64_t WDTGetSysCtl64BySpecifier(char* specifier) {
 }
 ```
 
-> 但是实际在真机测试会发现，当 `specifier` 为 `hw.cpufrequency_max` 和 `hw.cpufrequency_min` 时，`sysctlbyname(specifier, NULL, size, NULL, 0)`函数的返回值为-1，导致无法获取这两个指标，模拟器上则正常，然而模拟器上获取的两个指标的值都是2700000000HZ，我的 MBP 的主频就是2.7GHZ。暂时也没找到有什么更好的方法能在真机上获取这两个指标。
+> 但是实际在真机测试会发现，当 `specifier` 为 `hw.cpufrequency_max` 和 `hw.cpufrequency_min` 时，`sysctlbyname(specifier, NULL, size, NULL, 0)`函数的返回值为-1，导致无法获取这两个指标，模拟器上则正常，然而模拟器上获取的两个指标的值都是2700000000HZ，我的 MBP 的主频就是2.7GHZ。应该是 iOS 禁用了这两个内核变量的获取，暂时也没找到有什么更好的方法能在真机上获取这两个指标。
 
 ### CPU Type
 
