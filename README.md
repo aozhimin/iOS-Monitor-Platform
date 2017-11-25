@@ -697,7 +697,7 @@ freqTest_LOOP:
 
 我用一台 iPhone 6 测试了这种方法获得 CPU 频率，结果为 1391614727.725209 HZ，大约也就是 1400 MHZ，和上面那张表中主频一致。
 
-> 这种实现方式的代码实际是参考了 AppStore 上的一款应用 [CPU Dasher](https://itunes.apple.com/us/app/cpu-dasher64/id884513234?mt=8)
+> 这种实现方式的代码实际是参考了 AppStore 上的一款应用 [CPU Dasher](https://itunes.apple.com/us/app/cpu-dasher64/id884513234?mt=8)，代码参考[CPU-Dasher-for-iOS](https://github.com/zenny-chen/CPU-Dasher-for-iOS)。
 
 要获取 CPU 最大频率 和 CPU 最小频率这两个性能指标也需要用到 `sysctl`，`sysctl` 是用以查询内核状态的接口，具体实现如下
 
@@ -1843,4 +1843,5 @@ Email: aozhimin0811@gmail.com
 * [Mobile Application Monitor IOS组件设计技术分享](http://bbs.netease.im/read-tid-149)
 * [iOS-Diagnostics](https://github.com/lyonanderson/iOS-Diagnostics)
 * [性能可视化实践之路](http://www.doc88.com/p-3072311816896.html)
-
+* [SystemMonitor](https://github.com/Asido/SystemMonitor)
+* [CPU-Dasher-for-iOS](https://github.com/zenny-chen/CPU-Dasher-for-iOS)
