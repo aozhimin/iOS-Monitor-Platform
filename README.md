@@ -434,6 +434,271 @@ CPU 频率，就是 CPU 的时钟频率， 是 CPU 运算时的工作的频率�
 }
 ```
 
+> 反编译代码中的 `[self getSysInfo:0Xf]` 的参数 `0Xf` 就是 `HW_CPU_FREQ`， `HW_CPU_FREQ` 的宏定义的就是 15.
+
+但是在真机测试会发现上述方式并不能正确获取到设备的 CPU 频率，如果你在网上搜索会发现有很多代码都是使用这种方式，猜测应该是早期版本还是能够获取到的，只不过出于安全性的考虑，主频这个内核变量也被禁止访问了。手淘等应用中代码估计应该是遗留代码。
+既然上述方式已经被 Apple 堵死了，我们还有其他的方法可以获取到 CPU 主频吗？当然，其实我们还是可以通过一些变通的方式获取到的，主要有以下两种方式。
+第一种方式是比较容易实现，我们通过硬编码的方式，建立一张机型和 CPU 主频的映射表，然后根据机型找到对应的 CPU 主频即可。
+
+```
+static const NSUInteger CPUFrequencyTable[] = {
+    [iPhone_1G]         = 412,
+    [iPhone_3G]         = 620,
+    [iPhone_3GS]        = 600,
+    [iPhone_4]          = 800,
+    [iPhone_4_Verizon]  = 800,
+    [iPhone_4S]         = 800,
+    [iPhone_5_GSM]      = 1300,
+    [iPhone_5_CDMA]     = 1300,
+    [iPhone_5C]         = 1000,
+    [iPhone_5S]         = 1300,
+    [iPhone_6]          = 1400,
+    [iPhone_6_Plus]     = 1400,
+    [iPhone_6S]         = 1850,
+    [iPhone_6S_Plus]    = 1850,
+    [iPod_Touch_1G]     = 400,
+    [iPod_Touch_2G]     = 533,
+    [iPod_Touch_3G]     = 600,
+    [iPod_Touch_4G]     = 800,
+    [iPod_Touch_5]      = 1000,
+    [iPad_1]            = 1000,
+    [iPad_2_CDMA]       = 1000,
+    [iPad_2_GSM]        = 1000,
+    [iPad_2_WiFi]       = 1000,
+    [iPad_3_WiFi]       = 1000,
+    [iPad_3_GSM]        = 1000,
+    [iPad_3_CDMA]       = 1000,
+    [iPad_4_WiFi]       = 1400,
+    [iPad_4_GSM]        = 1400,
+    [iPad_4_CDMA]       = 1400,
+    [iPad_Air]          = 1400,
+    [iPad_Air_Cellular] = 1400,
+    [iPad_Air_2]        = 1500,
+    [iPad_Air_2_Cellular] = 1500,
+    [iPad_Pro]          = 2260,
+    [iPad_Mini_WiFi]    = 1000,
+    [iPad_Mini_GSM]     = 1000,
+    [iPad_Mini_CDMA]    = 1000,
+    [iPad_Mini_2]       = 1300,
+    [iPad_Mini_2_Cellular] = 1300,
+    [iPad_Mini_3]       = 1300,
+    [iPad_Mini_3_Cellular] = 1300,
+    [iUnknown]          = 0
+};
+```
+
+> 上面主频值的单位为 MHZ，[SystemMonitor](https://github.com/Asido/SystemMonitor) 就是使用这种方式。
+
+第二种方式实现起来较上一种方式更为复杂，可以通过计算来得出 CPU 频率，具体的代码如下
+
+```
+extern int freqTest(int cycles);
+
+static double GetCPUFrequency(void)
+{
+    volatile NSTimeInterval times[500];
+    
+    int sum = 0;
+    
+    for(int i = 0; i < 500; i++)
+    {
+        times[i] = [[NSProcessInfo processInfo] systemUptime];
+        sum += freqTest(10000);
+        times[i] = [[NSProcessInfo processInfo] systemUptime] - times[i];
+    }
+    
+    NSTimeInterval time = times[0];
+    for(int i = 1; i < 500; i++)
+    {
+        if(time > times[i])
+            time = times[i];
+    }
+    
+    double freq = 1300000.0 / time;
+    return freq;
+}
+```
+
+出于效率的考虑，代码中 `freqTest` 这个函数是用汇编写的，在工程加入一个文件 cpuFreq.s，后缀 s 代表这个文件是一个汇编文件，文件的代码如下：
+
+```
+.text
+.align 4
+.globl _freqTest    
+
+_freqTest:
+
+    push    {r4-r11, lr}
+
+freqTest_LOOP:
+
+    // loop 1
+    add     r2, r2, r1
+    add     r3, r3, r2
+    add     r4, r4, r3
+    add     r5, r5, r4
+    add     r6, r6, r5
+    add     r7, r7, r6
+    add     r8, r8, r7
+    add     r9, r9, r8
+    add     r10, r10, r9
+    add     r11, r11, r10
+    add     r12, r12, r11
+    add     r14, r14, r12
+    add     r1, r1, r14
+
+    // loop 2
+    add     r2, r2, r1
+    add     r3, r3, r2
+    add     r4, r4, r3
+    add     r5, r5, r4
+    add     r6, r6, r5
+    add     r7, r7, r6
+    add     r8, r8, r7
+    add     r9, r9, r8
+    add     r10, r10, r9
+    add     r11, r11, r10
+    add     r12, r12, r11
+    add     r14, r14, r12
+    add     r1, r1, r14
+
+    // loop 3
+    add     r2, r2, r1
+    add     r3, r3, r2
+    add     r4, r4, r3
+    add     r5, r5, r4
+    add     r6, r6, r5
+    add     r7, r7, r6
+    add     r8, r8, r7
+    add     r9, r9, r8
+    add     r10, r10, r9
+    add     r11, r11, r10
+    add     r12, r12, r11
+    add     r14, r14, r12
+    add     r1, r1, r14
+
+    // loop 4
+    add     r2, r2, r1
+    add     r3, r3, r2
+    add     r4, r4, r3
+    add     r5, r5, r4
+    add     r6, r6, r5
+    add     r7, r7, r6
+    add     r8, r8, r7
+    add     r9, r9, r8
+    add     r10, r10, r9
+    add     r11, r11, r10
+    add     r12, r12, r11
+    add     r14, r14, r12
+    add     r1, r1, r14
+
+    // loop 5
+    add     r2, r2, r1
+    add     r3, r3, r2
+    add     r4, r4, r3
+    add     r5, r5, r4
+    add     r6, r6, r5
+    add     r7, r7, r6
+    add     r8, r8, r7
+    add     r9, r9, r8
+    add     r10, r10, r9
+    add     r11, r11, r10
+    add     r12, r12, r11
+    add     r14, r14, r12
+    add     r1, r1, r14
+
+    // loop 6
+    add     r2, r2, r1
+    add     r3, r3, r2
+    add     r4, r4, r3
+    add     r5, r5, r4
+    add     r6, r6, r5
+    add     r7, r7, r6
+    add     r8, r8, r7
+    add     r9, r9, r8
+    add     r10, r10, r9
+    add     r11, r11, r10
+    add     r12, r12, r11
+    add     r14, r14, r12
+    add     r1, r1, r14
+
+    // loop 7
+    add     r2, r2, r1
+    add     r3, r3, r2
+    add     r4, r4, r3
+    add     r5, r5, r4
+    add     r6, r6, r5
+    add     r7, r7, r6
+    add     r8, r8, r7
+    add     r9, r9, r8
+    add     r10, r10, r9
+    add     r11, r11, r10
+    add     r12, r12, r11
+    add     r14, r14, r12
+    add     r1, r1, r14
+
+    // loop 8
+    add     r2, r2, r1
+    add     r3, r3, r2
+    add     r4, r4, r3
+    add     r5, r5, r4
+    add     r6, r6, r5
+    add     r7, r7, r6
+    add     r8, r8, r7
+    add     r9, r9, r8
+    add     r10, r10, r9
+    add     r11, r11, r10
+    add     r12, r12, r11
+    add     r14, r14, r12
+    add     r1, r1, r14
+
+    // loop 9
+    add     r2, r2, r1
+    add     r3, r3, r2
+    add     r4, r4, r3
+    add     r5, r5, r4
+    add     r6, r6, r5
+    add     r7, r7, r6
+    add     r8, r8, r7
+    add     r9, r9, r8
+    add     r10, r10, r9
+    add     r11, r11, r10
+    add     r12, r12, r11
+    add     r14, r14, r12
+    add     r1, r1, r14
+
+    // loop 10
+    add     r2, r2, r1
+    add     r3, r3, r2
+    add     r4, r4, r3
+    add     r5, r5, r4
+    add     r6, r6, r5
+    add     r7, r7, r6
+    add     r8, r8, r7
+    add     r9, r9, r8
+    add     r10, r10, r9
+    add     r11, r11, r10
+    add     r12, r12, r11
+    add     r14, r14, r12
+    add     r1, r1, r14
+
+    subs    r0, r0, #1
+    bne     freqTest_LOOP
+    pop     {r4-r11, pc}
+```
+
+当然这个文件的汇编指令只支持 armv7 和 armv7s ，也就是 32 位 Arch，64 位汇编指令有机会再补上，如果你使用的是 64 位机器调试，记得将 build archive architecture only 设置为 NO 如下图，否则会编译不通过，
+
+<p align="center">
+
+<img src="Images/build_archive_architecture_only.png" width="500">
+
+</p>
+
+我用一台 iPhone 6 测试了这种方法获得 CPU 频率，结果为 1391614727.725209 HZ，大约也就是 1400 MHZ，和上面那张表中主频一致。
+
+> 这种实现方式的代码实际是参考了 AppStore 上的一款应用 [CPU Dasher](https://itunes.apple.com/us/app/cpu-dasher64/id884513234?mt=8)
+
 要获取 CPU 最大频率 和 CPU 最小频率这两个性能指标也需要用到 `sysctl`，`sysctl` 是用以查询内核状态的接口，具体实现如下
 
 ``` objective-c
