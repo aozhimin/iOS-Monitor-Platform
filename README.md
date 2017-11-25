@@ -410,7 +410,15 @@ CPU 频率，就是 CPU 的时钟频率， 是 CPU 运算时的工作的频率�
 
 在 iOS 中与 CPU 频率相关的性能指标有三个：CPU 频率，CPU 最大频率 和 CPU 最小频率。
 
-下面代码给出了获取 CPU 频率的实现，笔者通过反编译发现手淘，腾讯视频等应用也是通过这种方式获取 CPU 频率，所以这种实现应当没问题。
+下面代码给出了获取 CPU 频率的实现，笔者通过反编译发现手淘，腾讯视频等应用也是通过这种方式获取 CPU 频率，反编译的截图如下。
+
+<p align="center">
+
+<img src="Images/taobao_cpu_frequency1.jpeg" width="500">
+<img src="Images/taobao_cpu_frequency2.jpeg" width="500">
+</p>
+
+上面反编译代码的实现效果和下面这段代码基本一致。
 
 ``` objective-c
 + (NSUInteger)getSysInfo:(uint)typeSpecifier {
