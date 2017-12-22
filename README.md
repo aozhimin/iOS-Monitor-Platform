@@ -1190,6 +1190,7 @@ NSString *report = [PLCrashReportTextFormatter stringValueForCrashReport:reporte
 * 响应时间
 * HTTP 错误率
 * 网络错误率
+* 流量
 
 ### NSURLProtocol
 
@@ -1693,6 +1694,97 @@ Apple 在 iOS 10 的 `NSURLSessionTaskDelegate` 代理中新增了 `-URLSession:
 	 */
 	@property (nullable, copy, readonly) NSDate *responseEndDate;
 	```
+
+### Traffic
+
+在网络 APM 中的流量指标往往也是用户比较关心的，而通过以上技术手段我们也很容易获取流量数据，主要分上行流量和下行流量这两个维度来聊聊是如何实现的。
+
+#### 上行流量
+
+上行流量主要可以从 HTTP 协议的请求报文入手，我们知道 HTTP 报文是由多行（用 CR + LF 做换行符）数据构成的字符串文本。具体来说，一个请求报文是由报文首部和报文主体组成，报文首部和报文主体之间会有一个空行，报文主体是可选的，其中报文首部又可以分为请求行和首部字段。
+
+```
+POST /q HTTP/1.1
+Host: get.sogou.com
+Content-Type: application/octet-stream
+Connection: keep-alive
+Accept: */*
+User-Agent: SogouServices (unknown version) CFNetwork/811.5.4 Darwin/16.7.0 (x86_64)
+Content-Length: 854
+Accept-Language: zh-cn
+Accept-Encoding: gzip, deflate
+
+u=pJcIsbkG1m3U+6MUE4njAru+inspyRuhE6TjK4eHiygLzcF9T84jjnLwJt4ZYhqdvoYRTmeMUgo4yiaDnuEn/w==&g=HqdloJ9a3HetZyhU87uuHeYXnFxb9z0PynKAvmO/s0iG3NiGKanztmA8ZLv82ILg1aZUFJwwvmfouA+DT2cYtg==&p=lf+gqqMorInY9pCBwEd+Ecy6akrYsRRLUaoToCFhmqlO5lsE9Am672UbGU9HanDWj44qFi+AMx+hnuWpMnZhe4xLTyItF8WH15TXYZ2+53t7VfzG/ORosrHkcU2vyMm2Z1lWiGnMZL9pDXqYaHDniE7fiDq0F3qfNvbOTPPNStroqv2UZPJWcX3ZCK5axd1/yBYq5Dhj8JREkO8MeO/qZNV/YY6mA7paq6nTnKKsJJQnSs7wpOCXosQKHOYtidziDmzf5vs+2e8vAGGOZmzlDlwyiaRFocYjPZ0Nxks9VQVCK67UKDNrZeU7xrebocq6&k=I1D5ztcMZZq/x3oJV9X43CxNhLfXXkln/ytlXa5LxKo1iFMjZtiuqbTDNA+jP4rCvlRdxdRwgvqpi6PvvZywfLS+KqGsik9csxxLgatJHkPhFXmGRQZlrl9vm8e2foTH7BmzUb/vhH/Y4s3FgBQylGj9l/A3/8VOuPFArCC2wzA=&v=ua/DxZwfrnDzy5Oo79+dblQ66uuUP3NmBKo7HbJwQIrvnlqw/lUcE54w310UB0VXpa6A8qZFJCeAa4vmAJRJaqkJfUkhX6z/kEE/kybSlqZaYl+KETwymNgVDvbf6On7tsGWU1HcxGZo/UN2aEnV3tWAAfhKGC3RliQfiwsTSFo=
+```
+
+在 iOS 中 `NSURLRequest` 的 `allHTTPHeaderFields` 属性就对应上文提到的首部字段，`HTTPBody` 则对应报文主体，所以很自然想到将两者大小相加即可得到请求报文的大小。但是细心的读者会发现 `allHTTPHeaderFields` 并不包含在实际请求的全部首部字段，比如 Cookie，但 Cookie 是造成首部膨胀的罪魁祸首，如果我们不把计算在内，很显然最后得到的结果不会很精确，当然事实上，我们还没有计算请求行。
+因为上面的原因，我曾异想天开的想获取到完整和原始的请求报文格式，试想如果我能拿到原始的报文，再计算其大小，那这个值应该是最精确的，于是我意图从 **CFNetwork** 这个 framework 发现一些蛛丝马迹，但是最终发现这条路太艰难了，不过在研究的过程中，还是有一些收获。在 **CFNetwork** 中 HTTP 的报文是用 `HTTPMessage` 这个 C++ 类来表示的，在构建请求报文的时候会调用下列函数。
+
+```
+int HTTPMessage::copySerializedMessage()() {
+    edi = arg_0;
+    esi = HTTPMessage::copySerializedHeaders(edi);
+    ebx = 0x0;
+    if (esi != 0x0) {
+            eax = *(edi + 0x18);
+            if (eax != 0x0) {
+                    ebx = HTTPBodyData::getLength();
+                    var_14 = ebx;
+                    ebx = CFDataCreateMutableCopy(CFGetAllocator(edi + 0xfffffff8), CFDataGetLength(esi) + ebx, esi);
+                    CFRelease(esi);
+                    eax = HTTPBodyData::getBytePtr();
+                    CFDataAppendBytes(ebx, eax, var_14);
+            }
+            else {
+                    ebx = esi;
+            }
+    }
+    eax = ebx;
+    return eax;
+}
+```
+
+可以观察到函数会先调用 `HTTPMessage::copySerializedHeaders`，这个函数就是去构建首部，包括将请求行和首部字段拼接，首部字段的序列化通过 `HTTPHeaderDict::serializeHeaders` 函数实现，之后调用 `HTTPBodyData` 去构建请求体。但是这些都没有对上层暴露接口，所以最终放弃了这个念头。
+
+于是只能从上层接口来计算请求报文的大小，思路还是与之前一样，只不过我们拿到 `allHTTPHeaderFields` 之后，会去调用 `-[NSHTTPCookieStorage cookiesForURL:]` 方法获得对应 URL 的 Cookie 信息，然后调用 `-[NSHTTPCookie requestHeaderFieldsWithCookies:cookies]` 以首部字段形式返回，最后将 Cookie 的首部字段加入 `allHTTPHeaderFields` 中，具体代码如下：
+
+```
+- (NSUInteger)p_getRequestLength {
+    NSDictionary<NSString *, NSString *> *headerFields = _request.allHTTPHeaderFields;
+    NSDictionary<NSString *, NSString *> *cookiesHeader = [self p_getCookies];
+    if (cookiesHeader.count) {
+        NSMutableDictionary *headerFieldsWithCookies = [NSMutableDictionary dictionaryWithDictionary:headerFields];
+        [headerFieldsWithCookies addEntriesFromDictionary:cookiesHeader];
+        headerFields = [headerFieldsWithCookies copy];
+    }
+    
+    NSUInteger headersLength = [self p_getHeadersLength:headerFields];
+    NSUInteger bodyLength = [_request.HTTPBody length];
+    return headersLength + bodyLength;
+}
+
+- (NSUInteger)p_getHeadersLength:(NSDictionary *)headers {
+    NSUInteger headersLength = 0;
+    if (headers) {
+        NSData *data = [NSJSONSerialization dataWithJSONObject:headers
+                                                       options:NSJSONWritingPrettyPrinted
+                                                         error:nil];
+        headersLength = data.length;
+    }
+    
+    return headersLength;
+}
+
+- (NSDictionary<NSString *, NSString *> *)p_getCookies {
+    NSDictionary<NSString *, NSString *> *cookiesHeader;
+    NSHTTPCookieStorage *cookieStorage = [NSHTTPCookieStorage sharedHTTPCookieStorage];
+    NSArray<NSHTTPCookie *> *cookies = [cookieStorage cookiesForURL:_request.URL];
+    if (cookies.count) {
+         cookiesHeader = [NSHTTPCookie requestHeaderFieldsWithCookies:cookies];
+    }
+    return cookiesHeader;
+}
+```
 
 ## Power consumption
 
