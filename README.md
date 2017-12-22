@@ -1786,6 +1786,63 @@ int HTTPMessage::copySerializedMessage()() {
 }
 ```
 
+#### 下行流量
+
+下行流量的思路也类似，主要计算每个响应报文的大小，包含报文首部和报文主体，两者之间有个空行，报文首部包含状态行和首部字段。实现上会用到 `NSHTTPURLResponse` 的 `allHeaderFields` 和 `expectedContentLength` 属性。但这里需要注意的是 `expectedContentLength` 属性可能会为 `NSURLResponseUnknownLength`(-1)，主要是在有些请求的响应的首部字段中没有 `Content-Length` 字段，或者没有告知具体响应大小时出现。那么这个时候需要通过其他的机制去计算。
+
+```
+- (int64_t)p_getResponseLength {
+    int64_t responseLength = 0;
+    if (_response && [_response isKindOfClass:[NSHTTPURLResponse class]]) {
+        NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)_response;
+        NSDictionary<NSString *, NSString *> *headerFields = httpResponse.allHeaderFields;
+        NSUInteger headersLength = [self p_getHeadersLength:headerFields];
+        int64_t contentLength = (httpResponse.expectedContentLength != NSURLResponseUnknownLength) ?
+        httpResponse.expectedContentLength :
+        _dataLength;
+        responseLength = headersLength + contentLength;
+    }
+    return responseLength;
+}
+```
+
+在上面代码中会去判断 `expectedContentLength` 是否为 `NSURLResponseUnknownLength`，如果不是响应报文主体的大小就是 `expectedContentLength`，否则将其赋值为 `_dataLength`。`_dataLength` 的计算可以在响应的回调中去计算，比如下面代码罗列的这几个地方。
+
+```
+- (void)wtn_URLSession:(NSURLSession *)session
+              dataTask:(NSURLSessionDataTask *)dataTask
+        didReceiveData:(NSData *)data {
+    WTNHTTPTransactionMetrics *httpTransaction = dataTask.httpTransaction;
+    httpTransaction.dataLength += data.length;
+    
+    if ([self.originalDelegate respondsToSelector:@selector(URLSession:dataTask:didReceiveData:)]) {
+        [(id)self.originalDelegate URLSession:session dataTask:dataTask didReceiveData:data];
+    }
+}
+
+
+- (NSURLSessionDataTask *)wtn_dataTaskWithRequest:(NSURLRequest *)request
+                                completionHandler:(void (^)(NSData * _Nullable data,
+                                                            NSURLResponse * _Nullable response,
+                                                            NSError * _Nullable error))completionHandler {
+    WTNHTTPTransactionMetrics *httpTransaction = [WTNHTTPTransactionMetrics new];
+    
+    ······
+
+    if (completionHandler) {
+        wrappedCompletionHandler = ^(NSData * _Nullable data, NSURLResponse * _Nullable response, NSError * _Nullable error) {
+            httpTransaction.dataLength = data.length;
+        };
+    }
+    
+    ······
+
+    return dataTask;
+}
+```
+
+`wtn_URLSession:dataTask:didReceiveData` 是 hook 之后的回调函数，因为在大文件中这个回调会执行多次，所以这里使用 `+=`。`wtn_dataTaskWithRequest:completionHandler:` 也是 hook 函数，类似的还有 `wtn_uploadTaskWithRequest:fromData:completionHandler:`、`wtn_uploadTaskWithRequest:fromFile:completionHandler` 等。
+
 ## Power consumption
 
 iOS 设备的电量一直是用户非常关心的问题。如果你的应用由于某些缺陷不幸成为电量杀手，用户会毫不犹豫的卸载你的应用，所以耗电也是 App 性能的重要衡量标准之一。然而事实上业内对耗电量的监控的方案都做的不太好，下面会介绍和对比业内已有的耗电量的监控方案。
