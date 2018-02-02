@@ -754,7 +754,7 @@ typedef struct {
 } NXArchInfo;
 ```
 
-`NXArchInfo` 结构体成员变量中就包含我们需要的信息：`cputype` 和 `cputype`，这两个变量类型的定义在 `mach/machine.h` 头文件中给出，本质上都是 `int` 类型 `typedef` 得到的。
+`NXArchInfo` 结构体成员变量中就包含我们需要的信息：`cputype` 和 `cpusubtype`，这两个变量类型的定义在 `mach/machine.h` 头文件中给出，本质上都是 `int` 类型 `typedef` 得到的。
 
 根据 `mach/machine.h` 头文件给出的 CPU 架构类型的定义，可以很容易建立起各 CPU 架构到其对应描述的映射关系，代码实现如下：
 
