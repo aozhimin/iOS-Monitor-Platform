@@ -863,7 +863,7 @@ kern_return_t task_info
 );
 ```
 
-最后得到获取当前 **App Memory** 的使用情况
+于是得到获取当前 **App Memory** 的使用情况
 
 ``` objective-c
 - (NSUInteger)getResidentMemory
@@ -883,7 +883,66 @@ kern_return_t task_info
 }
 ```
 
-> 如果将上述代码采集到的 App RAM 的使用值与 Xcode 的 Debug Gauges 的 memory 对比，会发现代码会比 Debug Gauges 多几十 MB，具体的原因请看[这个 issue 的讨论](https://github.com/aozhimin/iOS-Monitor-Platform/issues/5)。
+细心的读者会发现，将上述代码采集到的 App RAM 的使用值与 Xcode 的 Debug Gauges 的 memory 对比，会发现代码会与 Debug Gauges 显示的值存在差异，有时甚至会差几百 MB，那么究竟怎样才能获取到应用使用的真实内存值呢？
+
+我们先来看看 WebKit 源码中是怎样使用的，在 [MemoryFootprintCocoa.cpp](https://github.com/WebKit/webkit/blob/52bc6f0a96a062cb0eb76e9a81497183dc87c268/Source/WTF/wtf/cocoa/MemoryFootprintCocoa.cpp) 文件中，代码如下：
+
+```
+size_t memoryFootprint()
+{
+    task_vm_info_data_t vmInfo;
+    mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
+    kern_return_t result = task_info(mach_task_self(), TASK_VM_INFO, (task_info_t) &vmInfo, &count);
+    if (result != KERN_SUCCESS)
+        return 0;
+    return static_cast<size_t>(vmInfo.phys_footprint);
+}
+```
+
+可以看到代码使用的不是 `resident_size`，而是 `phys_footprint`，`phys_footprint` 同样是 task_info 的成员变量。
+
+另外我们知道在 iOS 中如果应用使用内存高于水位线时，会被 JetSam 杀死，那么我们也来探索下 JetSam 是怎么获取应用内存吧。具体代码实现在 [kern_memorystatus.c](https://github.com/apple/darwin-xnu/blob/0a798f6738bc1db01281fc08ae024145e84df927/bsd/kern/kern_memorystatus.c) 文件中，代码如下：
+
+```
+static boolean_t
+memorystatus_kill_hiwat_proc(uint32_t *errors)
+{
+.....
+		/* skip if no limit set */
+		if (p->p_memstat_memlimit <= 0) {
+			continue;
+		}
+
+		footprint_in_bytes = get_task_phys_footprint(p->task);
+		memlimit_in_bytes  = (((uint64_t)p->p_memstat_memlimit) * 1024ULL * 1024ULL);	/* convert MB to bytes */
+		skip = (footprint_in_bytes <= memlimit_in_bytes);
+.....
+	return killed;
+}
+
+```
+
+当我们将获取内存的实现从 `resident_size` 换成 `phys_footprint` 时，于是代码获取的内存值就和 Xcode Debug Gauges 一致了。
+
+最后，我们得到获取应用使用真实内存值的代码如下：
+
+``` objective-c
+- (NSUInteger)getApplicationUsedMemory
+{
+    struct mach_task_basic_info info;
+    mach_msg_type_number_t count = MACH_TASK_BASIC_INFO_COUNT;
+	
+	int r = task_info(mach_task_self(), MACH_TASK_BASIC_INFO, (task_info_t)& info, & count);
+	if (r == KERN_SUCCESS)
+	{
+		return info.phys_footprint;
+	}
+	else
+	{
+		return -1;
+	}
+}
+```
 
 与获取 **CPU** 占用率类似，在调用 `task_info` API 时，`target_task` 参数传入的是 `mach_task_self()`，表示获取当前的 Mach task，另外 `flavor` 参数传的是 `MACH_TASK_BASIC_INFO`，使用这个类型会返回 `mach_task_basic_info` 结构体，表示返回 `target_task` 的基本信息，比如 task 的挂起次数和驻留页面数量。
 
